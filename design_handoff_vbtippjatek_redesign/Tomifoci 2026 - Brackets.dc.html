@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;background:#EAF6F5;color:#0D3331;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+  @keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+  .scrollx{overflow-x:auto;scrollbar-width:thin;scrollbar-color:#bcdedb transparent}
+  .scrollx::-webkit-scrollbar{height:8px}
+  .scrollx::-webkit-scrollbar-thumb{background:#bcdedb;border-radius:8px}
+</style>
+</helmet>
+
+<div style="min-height:100dvh;background:#EAF6F5">
+
+  <!-- header -->
+  <header style="position:sticky;top:0;z-index:20;background:rgba(234,246,245,.9);backdrop-filter:blur(12px);padding:16px 18px 12px;border-bottom:1px solid rgba(220,239,238,.8)">
+    <div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:11px;font-weight:900;letter-spacing:.14em;color:rgba(13,51,49,.55);text-transform:uppercase">Kieséses ágrajz</div>
+          <h1 style="margin:2px 0 0;font-size:22px;font-weight:900;letter-spacing:-.01em">{{ title }}</h1>
+        </div>
+        <div style="display:flex;background:#fff;border-radius:13px;padding:4px;box-shadow:0 2px 10px rgba(13,51,49,.07)">
+          <button onClick="{{ showParbaj }}" style="{{ tabParbajStyle }}">♟ Párbaj rájátszás</button>
+          <button onClick="{{ showWc }}" style="{{ tabWcStyle }}">🏆 VB kiesés</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px">
+        <span style="font-size:13px;color:rgba(13,51,49,.7);font-weight:600">{{ subtitle }}</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#007E73"><span style="width:14px;height:14px;border-radius:4px;border:2px solid #14a08c;background:rgba(20,160,140,.14);display:inline-block"></span>{{ youLabel }}</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:rgba(13,51,49,.6)"><span style="width:8px;height:8px;border-radius:50%;background:#FF3B30;display:inline-block;animation:livePulse 1.3s infinite"></span>döntő él</span>
+      </div>
+    </div>
+  </header>
+
+  <div style="max-width:1180px;margin:0 auto;padding:16px 0 40px">
+
+    <!-- champion strip -->
+    <div style="margin:0 18px 14px;background:linear-gradient(160deg,#0C4D49,#0F6A64);border-radius:18px;padding:16px 18px;color:#fff;display:flex;align-items:center;gap:16px;box-shadow:0 12px 30px rgba(12,77,73,.25)">
+      <span style="font-size:34px">🏆</span>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:900;letter-spacing:.12em;color:#9fe6dd">DÖNTŐ</div>
+        <div style="font-size:17px;font-weight:900;margin-top:2px">{{ finalLine }}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#9fe6dd;font-weight:700">A te tipped</div>
+        <div style="font-size:14px;font-weight:900;color:#FFD700">{{ yourPickLine }}</div>
+      </div>
+    </div>
+
+    <!-- BRACKET STAGE (horizontal scroll) -->
+    <div class="scrollx" id="bracketScroll" style="padding:4px 18px 14px">
+      <div style="position:relative;{{ stageSize }}">
+        <!-- round labels -->
+        <sc-for list="{{ labels }}" as="l" hint-placeholder-count="9">
+          <div style="{{ l.style }}">{{ l.text }}</div>
+        </sc-for>
+        <!-- connector lines -->
+        <sc-for list="{{ lines }}" as="ln" hint-placeholder-count="40">
+          <div style="{{ ln.style }}"></div>
+        </sc-for>
+        <!-- match cards -->
+        <sc-for list="{{ cards }}" as="c" hint-placeholder-count="30">
+          <div style="{{ c.style }}">
+            <div style="{{ c.topStyle }}">
+              <span style="width:18px;text-align:center;flex:none">{{ c.topF }}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.topN }}</span>
+              <span style="{{ c.topScoreStyle }}">{{ c.topS }}</span>
+            </div>
+            <div style="height:1px;background:#EEF3F3"></div>
+            <div style="{{ c.botStyle }}">
+              <span style="width:18px;text-align:center;flex:none">{{ c.botF }}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.botN }}</span>
+              <span style="{{ c.botScoreStyle }}">{{ c.botS }}</span>
+            </div>
+          </div>
+        </sc-for>
+        <!-- final + champion node -->
+        <div style="{{ finalCardStyle }}">
+          <div style="font-size:9px;font-weight:900;letter-spacing:.1em;color:#9fe6dd;text-align:center;text-transform:uppercase">Döntő · él</div>
+          <div style="{{ finalTopStyle }}"><span style="width:18px;text-align:center;flex:none">{{ finalTopF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ finalTopN }}</span></div>
+          <div style="height:1px;background:rgba(255,255,255,.18)"></div>
+          <div style="{{ finalBotStyle }}"><span style="width:18px;text-align:center;flex:none">{{ finalBotF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ finalBotN }}</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:rgba(13,51,49,.45);margin-top:-4px">← húzd oldalra a teljes ágrajzhoz →</div>
+
+    <!-- CONSOLATION / PLACEMENT -->
+    <div style="margin:24px 18px 0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <span style="font-size:13px;font-weight:900;letter-spacing:.08em;color:#0D3331">🪜 VIGASZÁG — HELYOSZTÓ</span>
+      </div>
+      <p style="font-size:13px;color:rgba(13,51,49,.62);margin:0 0 14px;max-width:560px">{{ consoNote }}</p>
+      <div class="scrollx" style="padding-bottom:8px">
+        <div style="display:flex;align-items:center;gap:0;min-width:520px">
+          <div style="display:flex;flex-direction:column;gap:24px">
+            <sc-for list="{{ consoSemis }}" as="c" hint-placeholder-count="2">
+              <div style="{{ c.style }}">
+                <div style="{{ c.topStyle }}"><span style="width:18px;text-align:center;flex:none">{{ c.topF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.topN }}</span><span style="{{ c.topScoreStyle }}">{{ c.topS }}</span></div>
+                <div style="height:1px;background:#EEF3F3"></div>
+                <div style="{{ c.botStyle }}"><span style="width:18px;text-align:center;flex:none">{{ c.botF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.botN }}</span><span style="{{ c.botScoreStyle }}">{{ c.botS }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="width:40px;height:2px;background:#cfe0de"></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:10px;font-weight:900;letter-spacing:.08em;color:#92600c;background:#fff7e6;border:1px solid #f3d9a6;padding:4px 10px;border-radius:7px;text-align:center">5. HELYÉRT</span>
+            <div style="{{ consoFinal.style }}">
+              <div style="{{ consoFinal.topStyle }}"><span style="width:18px;text-align:center;flex:none">{{ consoFinal.topF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ consoFinal.topN }}</span><span style="{{ consoFinal.topScoreStyle }}">{{ consoFinal.topS }}</span></div>
+              <div style="height:1px;background:#EEF3F3"></div>
+              <div style="{{ consoFinal.botStyle }}"><span style="width:18px;text-align:center;flex:none">{{ consoFinal.botF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ consoFinal.botN }}</span><span style="{{ consoFinal.botScoreStyle }}">{{ consoFinal.botS }}</span></div>
+            </div>
+          </div>
+          <div style="width:40px"></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:10px;font-weight:900;letter-spacing:.08em;color:#7a5b00;background:#fdf3d6;border:1px solid #ecd9a0;padding:4px 10px;border-radius:7px;text-align:center">🥉 BRONZ</span>
+            <div style="{{ bronze.style }}">
+              <div style="{{ bronze.topStyle }}"><span style="width:18px;text-align:center;flex:none">{{ bronze.topF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ bronze.topN }}</span><span style="{{ bronze.topScoreStyle }}">{{ bronze.topS }}</span></div>
+              <div style="height:1px;background:#EEF3F3"></div>
+              <div style="{{ bronze.botStyle }}"><span style="width:18px;text-align:center;flex:none">{{ bronze.botF }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ bronze.botN }}</span><span style="{{ bronze.botScoreStyle }}">{{ bronze.botS }}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RULES / SEEDING INFO -->
+    <div style="margin:24px 18px 0;background:linear-gradient(160deg,#1d6b74,#14525a);border-radius:18px;padding:18px;color:#eaf7f6">
+      <div style="font-size:12px;font-weight:900;letter-spacing:.08em;margin-bottom:12px">{{ rulesTitle }}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="4">
+          <div style="display:flex;gap:11px;align-items:flex-start">
+            <span style="width:26px;height:26px;flex:none;border-radius:8px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:14px">{{ r.icon }}</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#fff">{{ r.h }}</div>
+              <div style="font-size:12px;color:#cfeae8;line-height:1.45;margin-top:2px">{{ r.c }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { bracket:'parbaj' };
+
+  // ---------- seed data ----------
+  // helper-free literal seeds: each round0 match = {tn,tf,ts,bn,bf,bs}
+  WC = {
+    mine:'Brazília',
+    left:{
+      seed:[
+        {tn:'Argentína',tf:'🇦🇷',ts:2,bn:'Ausztria',bf:'🇦🇹',bs:0},
+        {tn:'Marokkó',tf:'🇲🇦',ts:2,bn:'Horváto.',bf:'🇭🇷',bs:1},
+        {tn:'Németo.',tf:'🇩🇪',ts:3,bn:'Szenegál',bf:'🇸🇳',bs:1},
+        {tn:'Portugália',tf:'🇵🇹',ts:2,bn:'Uruguay',bf:'🇺🇾',bs:1},
+        {tn:'Spanyolo.',tf:'🇪🇸',ts:2,bn:'Japán',bf:'🇯🇵',bs:0},
+        {tn:'Belgium',tf:'🇧🇪',ts:2,bn:'Kolumbia',bf:'🇨🇴',bs:1},
+        {tn:'Hollandia',tf:'🇳🇱',ts:3,bn:'Ecuador',bf:'🇪🇨',bs:2},
+        {tn:'Brazília',tf:'🇧🇷',ts:2,bn:'Svájc',bf:'🇨🇭',bs:0},
+      ],
+      adv:{1:[[1,0],[1,2],[2,1],[1,3]],2:[[2,1],[0,2]],3:[[0,1]]}
+    },
+    right:{
+      seed:[
+        {tn:'Franciao.',tf:'🇫🇷',ts:2,bn:'Norvégia',bf:'🇳🇴',bs:1},
+        {tn:'Anglia',tf:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',ts:3,bn:'Egyiptom',bf:'🇪🇬',bs:0},
+        {tn:'Dél-Korea',tf:'🇰🇷',ts:2,bn:'Mexikó',bf:'🇲🇽',bs:1},
+        {tn:'USA',tf:'🇺🇸',ts:2,bn:'Ausztrália',bf:'🇦🇺',bs:1},
+        {tn:'Katar',tf:'🇶🇦',ts:1,bn:'Kanada',bf:'🇨🇦',bs:0},
+        {tn:'Tunézia',tf:'🇹🇳',ts:2,bn:'Szaúd-A.',bf:'🇸🇦',bs:1},
+        {tn:'Elefántcs.',tf:'🇨🇮',ts:2,bn:'Paraguay',bf:'🇵🇾',bs:1},
+        {tn:'Üzbég.',tf:'🇺🇿',ts:2,bn:'Panama',bf:'🇵🇦',bs:0},
+      ],
+      adv:{1:[[2,1],[0,2],[0,1],[2,1]],2:[[3,1],[0,1]],3:[[2,0]]}
+    },
+    final:{tn:'Brazília',tf:'🇧🇷',bn:'Franciao.',bf:'🇫🇷'},
+    bronze:{tn:'Argentína',tf:'🇦🇷',ts:null,bn:'Elefántcs.',bf:'🇨🇮',bs:null},
+    conso:{ semis:[
+        {tn:'Portugália',tf:'🇵🇹',ts:1,bn:'USA',bf:'🇺🇸',bs:0},
+        {tn:'Spanyolo.',tf:'🇪🇸',ts:2,bn:'Tunézia',bf:'🇹🇳',bs:1},
+      ], final:{tn:'Portugália',tf:'🇵🇹',ts:null,bn:'Spanyolo.',bf:'🇪🇸',bs:null} },
+  };
+
+  PB = {
+    mine:'Tomi',
+    left:{
+      seed:[
+        {tn:'Tomi',tf:'',ts:24,bn:'Zsolt',bf:'',bs:19},
+        {tn:'Bence',tf:'',ts:21,bn:'Áron',bf:'',bs:28},
+        {tn:'Dávid',tf:'',ts:26,bn:'Gergő',bf:'',bs:22},
+        {tn:'Marci',tf:'',ts:18,bn:'Petra',bf:'',bs:25},
+        {tn:'Kata',tf:'',ts:23,bn:'Levi',bf:'',bs:20},
+        {tn:'Nóra',tf:'',ts:27,bn:'Bálint',bf:'',bs:24},
+        {tn:'Gábor',tf:'',ts:22,bn:'Eszter',bf:'',bs:26},
+        {tn:'Tamás',tf:'',ts:30,bn:'Réka',bf:'',bs:21},
+      ],
+      adv:{1:[[26,22],[20,24],[19,23],[25,21]],2:[[28,25],[22,24]],3:[[27,21]]}
+    },
+    right:{
+      seed:[
+        {tn:'Máté',tf:'',ts:25,bn:'Andris',bf:'',bs:22},
+        {tn:'Viktor',tf:'',ts:20,bn:'Csaba',bf:'',bs:27},
+        {tn:'Ádám',tf:'',ts:29,bn:'Roland',bf:'',bs:24},
+        {tn:'Botond',tf:'',ts:23,bn:'Olivér',bf:'',bs:26},
+        {tn:'Dénes',tf:'',ts:22,bn:'Feri',bf:'',bs:19},
+        {tn:'Imre',tf:'',ts:26,bn:'Józsi',bf:'',bs:28},
+        {tn:'Karcsi',tf:'',ts:24,bn:'Laci',bf:'',bs:21},
+        {tn:'Norbi',tf:'',ts:18,bn:'Pál',bf:'',bs:23},
+      ],
+      adv:{1:[[24,27],[26,22],[21,25],[23,20]],2:[[28,30],[24,22]],3:[[27,25]]}
+    },
+    final:{tn:'Tomi',tf:'',bn:'Ádám',bf:''},
+    bronze:{tn:'Eszter',tf:'',ts:null,bn:'Józsi',bf:'',bs:null},
+    conso:{ semis:[
+        {tn:'Petra',tf:'',ts:22,bn:'Csaba',bf:'',bs:19},
+        {tn:'Nóra',tf:'',ts:24,bn:'Karcsi',bf:'',bs:21},
+      ], final:{tn:'Petra',tf:'',ts:null,bn:'Nóra',bf:'',bs:null} },
+  };
+
+  // ---------- geometry ----------
+  CARD_W=140; CARD_H=54; CONN=34; VGAP=18; LABEL_H=34;
+
+  win(mt){
+    if(mt.ts==null||mt.bs==null) return null;
+    return mt.ts>=mt.bs ? {n:mt.tn,f:mt.tf} : {n:mt.bn,f:mt.bf};
+  }
+  mkRounds(side){
+    const rounds=[ side.seed.map(s=>({tn:s.tn,tf:s.tf,ts:s.ts,bn:s.bn,bf:s.bf,bs:s.bs})) ];
+    for(let r=1;r<=3;r++){
+      const prev=rounds[r-1], cnt=prev.length/2, out=[];
+      for(let j=0;j<cnt;j++){
+        const wt=this.win(prev[2*j]), wb=this.win(prev[2*j+1]);
+        const sc=(side.adv[r]&&side.adv[r][j])||null;
+        out.push({
+          tn:wt?wt.n:'—', tf:wt?wt.f:'', ts:sc?sc[0]:null,
+          bn:wb?wb.n:'—', bf:wb?wb.f:'', bs:sc?sc[1]:null,
+        });
+      }
+      rounds.push(out);
+    }
+    return rounds;
+  }
+
+  cardStyles(mt, MINE){
+    const played = mt.ts!=null && mt.bs!=null;
+    const topWin = played && mt.ts>=mt.bs;
+    const botWin = played && mt.bs>mt.ts;
+    const mineTop = mt.tn===MINE, mineBot = mt.bn===MINE;
+    const mineHere = mineTop||mineBot;
+    const base = 'position:absolute;width:'+this.CARD_W+'px;height:'+this.CARD_H+'px;background:#fff;border-radius:11px;overflow:hidden;box-shadow:0 2px 8px rgba(13,51,49,.07);display:flex;flex-direction:column;'
+      + (mineHere?'border:2px solid #14a08c;':'border:1px solid #E1EAEA;');
+    const row=(win,mine)=> 'display:flex;align-items:center;gap:6px;flex:1;padding:0 9px;font-size:12px;'
+      + (mine?'background:rgba(20,160,140,.12);':'')
+      + (win?'color:#007E73;font-weight:800;':'color:#11302E;font-weight:600;')
+      + (played&&!win?'opacity:.5;':'');
+    const sc=(win)=>'flex:none;font-weight:900;font-size:13px;'+(win?'color:#007E73':'color:rgba(13,51,49,.45)');
+    return {base, topStyle:row(topWin,mineTop), botStyle:row(botWin,mineBot),
+      topScoreStyle:sc(topWin), botScoreStyle:sc(botWin),
+      topS:mt.ts==null?'':mt.ts, botS:mt.bs==null?'':mt.bs};
+  }
+
+  buildSide(rounds, x0, mirror, MINE, cards, lines, roundLefts){
+    const CW=this.CARD_W, CH=this.CARD_H, CN=this.CONN, P0=CH+this.VGAP, LH=this.LABEL_H;
+    const sideW=4*(CW+CN);
+    const mapX=(lx,w)=> mirror ? x0+(sideW-lx-w) : x0+lx;
+    rounds.forEach((ms,r)=>{
+      const pitch=P0*Math.pow(2,r);
+      const lx=r*(CW+CN);
+      roundLefts[r]=mapX(lx,CW);
+      ms.forEach((mt,m)=>{
+        const cy=pitch*(m+0.5)+LH;
+        const st=this.cardStyles(mt,MINE);
+        cards.push({style:st.base+'left:'+mapX(lx,CW)+'px;top:'+(cy-CH/2)+'px',
+          topF:mt.tf,topN:mt.tn,topS:st.topS,topStyle:st.topStyle,topScoreStyle:st.topScoreStyle,
+          botF:mt.bf,botN:mt.bn,botS:st.botS,botStyle:st.botStyle,botScoreStyle:st.botScoreStyle});
+      });
+      if(r<rounds.length-1){
+        const cnt=Math.ceil(ms.length/2);
+        for(let i=0;i<cnt;i++){
+          const cyT=pitch*(2*i+0.5)+LH, cyB=pitch*(2*i+1+0.5)+LH, cyM=(cyT+cyB)/2;
+          const stubX=lx+CW, vX=stubX+CN/2, nextX=(r+1)*(CW+CN);
+          const L='background:#cfe0de;position:absolute;';
+          // outgoing stubs
+          lines.push({style:L+'left:'+mapX(stubX,CN/2)+'px;top:'+(cyT-1)+'px;width:'+(CN/2)+'px;height:2px'});
+          lines.push({style:L+'left:'+mapX(stubX,CN/2)+'px;top:'+(cyB-1)+'px;width:'+(CN/2)+'px;height:2px'});
+          // vertical
+          lines.push({style:L+'left:'+mapX(vX,2)+'px;top:'+cyT+'px;width:2px;height:'+(cyB-cyT)+'px'});
+          // incoming stub
+          lines.push({style:L+'left:'+mapX(vX,CN/2)+'px;top:'+(cyM-1)+'px;width:'+(CN/2)+'px;height:2px'});
+        }
+      }
+    });
+  }
+
+  componentDidMount(){
+    const el=document.getElementById('bracketScroll');
+    if(el){ el.scrollLeft=(el.scrollWidth-el.clientWidth)/2; }
+  }
+
+  renderVals(){
+    const isPB=this.state.bracket==='parbaj';
+    const D=isPB?this.PB:this.WC, MINE=D.mine;
+    const CW=this.CARD_W, CH=this.CARD_H, CN=this.CONN, P0=CH+this.VGAP, LH=this.LABEL_H;
+    const sideW=4*(CW+CN), finalGap=44, finalW=156;
+    const rightX0=sideW+finalGap+finalW+finalGap;
+    const stageW=rightX0+sideW;
+    const stageH=P0*8+LH;
+
+    const cards=[], lines=[], roundLeftsL=[], roundLeftsR=[];
+    this.buildSide(this.mkRounds(D.left), 0, false, MINE, cards, lines, roundLeftsL);
+    this.buildSide(this.mkRounds(D.right), rightX0, true, MINE, cards, lines, roundLeftsR);
+
+    // SF -> final connectors
+    const cyMid=P0*4+LH; // center
+    const Lc='background:#cfe0de;position:absolute;';
+    const leftSFright = 3*(CW+CN)+CW;             // left SF card right edge
+    const finalLeft = sideW+finalGap;
+    lines.push({style:Lc+'left:'+leftSFright+'px;top:'+(cyMid-1)+'px;width:'+(finalLeft-leftSFright)+'px;height:2px'});
+    const rightSFleft = rightX0+(sideW-(3*(CW+CN))-CW); // right SF card left edge (mirrored)
+    const finalRight = finalLeft+finalW;
+    lines.push({style:Lc+'left:'+finalRight+'px;top:'+(cyMid-1)+'px;width:'+(rightSFleft-finalRight)+'px;height:2px'});
+
+    // labels
+    const lblBase='position:absolute;top:6px;transform:translateX(-50%);font-size:10px;font-weight:900;letter-spacing:.08em;color:rgba(13,51,49,.5);text-transform:uppercase;white-space:nowrap';
+    const names=['Nyolcad','Negyed','Elő','SF'];
+    const labels=[];
+    [0,1,2,3].forEach(r=>{ labels.push({text:names[r], style:lblBase+';left:'+(roundLeftsL[r]+CW/2)+'px'}); });
+    labels.push({text:'Döntő', style:lblBase+';left:'+(finalLeft+finalW/2)+'px;color:#007E73'});
+    [3,2,1,0].forEach(r=>{ labels.push({text:names[r], style:lblBase+';left:'+(roundLeftsR[r]+CW/2)+'px'}); });
+
+    // final card
+    const f=D.final;
+    const fRow='display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:13px;font-weight:800;color:#fff';
+    const finalCardStyle='position:absolute;left:'+finalLeft+'px;top:'+(cyMid-46)+'px;width:'+finalW+'px;background:linear-gradient(160deg,#0C4D49,#0F6A64);border-radius:13px;padding:7px 0 4px;box-shadow:0 10px 26px rgba(12,77,73,.35);border:1px solid rgba(255,255,255,.12)';
+
+    // conso cards
+    const mkCard=(mt)=>{ const st=this.cardStyles(mt,MINE);
+      return {style:'position:relative;width:170px;height:'+CH+'px;background:#fff;border-radius:11px;overflow:hidden;box-shadow:0 2px 8px rgba(13,51,49,.07);display:flex;flex-direction:column;'+((mt.tn===MINE||mt.bn===MINE)?'border:2px solid #14a08c':'border:1px solid #E1EAEA'),
+        topF:mt.tf,topN:mt.tn,topS:st.topS,topStyle:st.topStyle,topScoreStyle:st.topScoreStyle,
+        botF:mt.bf,botN:mt.bn,botS:st.botS,botStyle:st.botStyle,botScoreStyle:st.botScoreStyle}; };
+    const consoSemis=D.conso.semis.map(mkCard);
+    const consoFinal=mkCard(D.conso.final);
+    const bronze=mkCard(D.bronze);
+
+    const rules = isPB ? [
+      {icon:'🥇',h:'Felső 32 jut be',c:'A 10. forduló utáni befagyasztott tabella adja a kiemelést — az 1–32. helyezett játszik 5 körös egyenes kieséssel.'},
+      {icon:'⚔️',h:'Párbaj = alappont',c:'Egy körben a 8 meccsre adott alappontod (0–40) száll szembe az ellenfeleddel; több pont továbbjut.'},
+      {icon:'🤝',h:'Döntetlennél a kiemeltebb',c:'Ha a két párbajpont egyenlő, a magasabban kiemelt játékos jut tovább (az állás 1–1 marad).'},
+      {icon:'🪜',h:'Mindenki helyezést kap',c:'A kieső is tovább játszik a vigaszágon, így a teljes mezőny 1–32. helyig rangsorolódik.'},
+    ] : [
+      {icon:'⏱️',h:'A 90 perc dönt',c:'Pontozáshoz a rendes játékidő eredménye számít; a hosszabbítás/tizenegyesek a továbbjutást döntik, a tipppontokat nem.'},
+      {icon:'🎯',h:'Élő tipppont a fán',c:'Minden meccskártya mutatja a te tipped és az aktuálisan elérhető pont állását — élőben frissül.'},
+      {icon:'🥉',h:'Bronzmeccs',c:'A két elődöntős vesztes játszik a 3. helyért — ez is tippelhető és pontozott.'},
+      {icon:'🪜',h:'Vigaszág (terv)',c:'Javasolt bővítés: a kieső csapatok helyosztó ágon folytatják, hogy a teljes 5–32. helyezés is kirajzolódjon.'},
+    ];
+
+    const seg=(on)=>'border:none;cursor:pointer;border-radius:10px;padding:9px 15px;font-weight:800;font-size:13px;white-space:nowrap;'
+      +(on?'background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;box-shadow:0 4px 12px rgba(0,184,169,.25)':'background:transparent;color:rgba(13,51,49,.6)');
+
+    return {
+      title: isPB?'Párbaj — rájátszás (Top 32)':'VB — kieséses szakasz',
+      subtitle: isPB?'5 kör · egyenes kiesés · a 10. forduló utáni kiemeléssel':'32 csapat · nyolcaddöntőtől a döntőig',
+      youLabel: isPB?'te (Tomi)':'a tipped (Brazília)',
+      showParbaj:()=>this.setState({bracket:'parbaj'}),
+      showWc:()=>this.setState({bracket:'wc'}),
+      tabParbajStyle:seg(isPB), tabWcStyle:seg(!isPB),
+
+      finalLine: f.tn+' '+(f.tf||'')+'  vs  '+(f.bf||'')+' '+f.bn,
+      yourPickLine: isPB?'Tomi — bajnok':'Brazília — bajnok',
+
+      stageSize:'width:'+stageW+'px;height:'+stageH+'px;min-width:'+stageW+'px',
+      cards, lines, labels,
+
+      finalCardStyle,
+      finalTopF:f.tf, finalTopN:f.tn, finalTopStyle:fRow,
+      finalBotF:f.bf, finalBotN:f.bn, finalBotStyle:fRow,
+
+      consoNote: isPB
+        ? 'A negyeddöntős vesztesek nem esnek ki a rangsorból: helyosztón döntik el az 5–8. helyet. A teljes vigaszág minden kört lejátszat, így 1-től 32-ig mindenki kap végső helyezést.'
+        : 'A negyeddöntős vesztesek helyosztón mérkőznek az 5–8. helyért, az elődöntős vesztesek a bronzért. (A teljes vigaszág opcionális bővítés — lásd a szabályokat.)',
+      consoSemis, consoFinal, bronze,
+
+      rulesTitle: isPB?'♟ PÁRBAJ RÁJÁTSZÁS — SZABÁLYOK':'🏆 VB KIESÉS — TUDNIVALÓK',
+      rules,
+    };
+  }
+}
+</script>
+</body>
+</html>

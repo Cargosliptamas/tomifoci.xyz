@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;background:#EDF2F2;color:#11302E;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  button,input,select{font-family:inherit}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+  @keyframes tabIn{from{transform:translateY(8px)}to{transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+  .awrap{min-height:100dvh}
+  .anav{display:flex;gap:6px;overflow-x:auto;padding:10px 14px;background:#fff;border-bottom:1px solid #E1EAEA;position:sticky;top:0;z-index:20;scrollbar-width:none}
+  .amain{padding:18px 16px 60px}
+  @media(min-width:900px){
+    .awrap{display:grid;grid-template-columns:236px minmax(0,1fr);max-width:1280px;margin:0 auto}
+    .anav{flex-direction:column;gap:2px;overflow:visible;height:100dvh;position:sticky;top:0;border-bottom:none;border-right:1px solid #E1EAEA;padding:18px 12px}
+    .navtext{display:inline!important}
+    .navgroup{display:block!important}
+    .amain{padding:26px 30px 60px}
+  }
+</style>
+</helmet>
+
+<div style="min-height:100dvh">
+
+  <!-- ===================== ADMIN LOGIN ===================== -->
+  <sc-if value="{{ isLocked }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height:100dvh;background:linear-gradient(170deg,#0C4D49,#08363C);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;color:#fff">
+    <div style="width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center">
+      <span style="width:60px;height:60px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px">🛡️</span>
+      <div style="font-weight:900;font-size:20px;margin-top:14px">Admin konzol</div>
+      <div style="font-size:13px;color:#9fe6dd;margin-top:2px">VB Tippjáték 2026 · üzemeltetés</div>
+      <div class="mono" style="font-size:11px;color:rgba(255,255,255,.5);margin-top:10px;letter-spacing:.04em">2FA: kikapcsolva · PIN belépés</div>
+
+      <div style="display:flex;gap:13px;margin:26px 0 6px">
+        <sc-for list="{{ pinDots }}" as="d" hint-placeholder-count="4">
+          <span style="{{ d.style }}"></span>
+        </sc-for>
+      </div>
+      <sc-if value="{{ pinError }}" hint-placeholder-val="{{ false }}">
+        <div style="color:#ff8b84;font-size:13px;font-weight:700">Hibás PIN</div>
+      </sc-if>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px;width:240px">
+        <sc-for list="{{ keypad }}" as="k" hint-placeholder-count="12">
+          <button onClick="{{ k.onPress }}" style="{{ k.style }}">{{ k.label }}</button>
+        </sc-for>
+      </div>
+      <button style="margin-top:20px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-weight:700;font-size:13px;padding:11px 20px;border-radius:12px;cursor:pointer">👆 Biometrikus belépés</button>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== CONSOLE ===================== -->
+  <sc-if value="{{ isUnlocked }}" hint-placeholder-val="{{ false }}">
+  <div class="awrap" style="background:#EDF2F2">
+
+    <!-- NAV -->
+    <nav class="anav">
+      <div class="navgroup" style="display:none;align-items:center;gap:10px;padding:4px 10px 16px;font-weight:900;font-size:15px">
+        <span style="width:30px;height:30px;border-radius:9px;background:linear-gradient(160deg,#0C4D49,#0F6A64);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">🛡️</span>
+        Admin
+      </div>
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="10">
+        <button onClick="{{ n.onClick }}" style="{{ n.style }}">
+          <span style="font-size:16px;width:20px;text-align:center">{{ n.icon }}</span>
+          <span class="navtext" style="display:none">{{ n.label }}</span>
+        </button>
+      </sc-for>
+    </nav>
+
+    <!-- MAIN -->
+    <main class="amain">
+      <!-- topbar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <div>
+          <div style="font-size:11px;font-weight:900;letter-spacing:.12em;color:rgba(17,48,46,.5);text-transform:uppercase">{{ secEyebrow }}</div>
+          <h1 style="margin:2px 0 0;font-size:23px;font-weight:900;letter-spacing:-.01em">{{ secTitle }}</h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mono" style="font-size:10px;font-weight:700;color:#15803d;background:#e4f5ea;border:1px solid #c2e6cf;padding:5px 9px;border-radius:7px">● ÉLES</span>
+          <span style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #E1EAEA;border-radius:999px;padding:4px 5px 4px 12px">
+            <span style="font-size:12px;font-weight:800">Tomi</span>
+            <span style="font-size:9px;font-weight:800;color:#9a6b00;background:#fff3d6;padding:2px 7px;border-radius:999px">FŐADMIN</span>
+            <button onClick="{{ lock }}" style="border:none;background:#f1f5f5;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:13px">⏏</button>
+          </span>
+        </div>
+      </div>
+
+      <!-- recompute banner -->
+      <sc-if value="{{ recompute }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:10px;background:#fff7e6;border:1px solid #f3d9a6;border-radius:12px;padding:11px 15px;margin-bottom:16px">
+        <span style="width:15px;height:15px;border:2px solid #d99c20;border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
+        <span style="font-size:13px;font-weight:700;color:#92600c">Pontok és rangsorok újraszámolása folyamatban…</span>
+      </div>
+      </sc-if>
+
+      <div style="animation:tabIn .25s">
+
+        <!-- ===== DASHBOARD ===== -->
+        <sc-if value="{{ secDash }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px">
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Játékosok</div><div style="font-size:28px;font-weight:900;margin-top:4px">35</div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Tippek</div><div style="font-size:28px;font-weight:900;margin-top:4px">1 240</div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Eredmények</div><div style="font-size:28px;font-weight:900;margin-top:4px">48<span style="font-size:14px;color:rgba(17,48,46,.4)">/104</span></div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Aktív kör</div><div style="font-size:28px;font-weight:900;margin-top:4px">♟ 4.</div></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:16px">
+              <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin-bottom:12px">RENDSZERÁLLAPOT</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600">Verzió egyezés</span><span class="mono" style="font-size:11px;font-weight:700;color:#15803d;background:#e4f5ea;padding:3px 9px;border-radius:7px">v1.2.0 ✓ (FE·BE·SW)</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600">LiveScore poll</span><span class="mono" style="font-size:11px;font-weight:700;color:#15803d;background:#e4f5ea;padding:3px 9px;border-radius:7px">2 perce · friss</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600">Cron ütemező</span><span class="mono" style="font-size:11px;font-weight:700;color:#15803d;background:#e4f5ea;padding:3px 9px;border-radius:7px">aktív</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:600">Frontend hibák (24ó)</span><span class="mono" style="font-size:11px;font-weight:700;color:rgba(17,48,46,.6);background:#f1f5f5;padding:3px 9px;border-radius:7px">0</span></div>
+              </div>
+              <button onClick="{{ repairScores }}" style="width:100%;margin-top:14px;border:1px solid #cfe0de;background:#f6faf9;color:#007E73;font-weight:800;font-size:13px;padding:10px;border-radius:11px;cursor:pointer">⟳ Pontok teljes újraszámítása</button>
+            </div>
+
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55)">NAPLÓ · LEGUTÓBBI</span><button onClick="{{ goLog }}" style="border:none;background:transparent;color:#007E73;font-weight:800;font-size:12px;cursor:pointer">összes ›</button></div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ audit }}" as="a" hint-placeholder-count="5">
+                  <div style="display:flex;gap:10px;align-items:baseline">
+                    <span class="mono" style="font-size:10px;color:rgba(17,48,46,.45);white-space:nowrap">{{ a.ts }}</span>
+                    <span style="font-size:13px;font-weight:600;color:#11302E">{{ a.text }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== PLAYERS ===== -->
+        <sc-if value="{{ secPlayers }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+            <input placeholder="Játékos keresése…" style="flex:1;min-width:180px;border:1px solid #E1EAEA;background:#fff;border-radius:11px;padding:11px 14px;font-size:14px;outline:none">
+            <button style="border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:800;font-size:14px;padding:11px 18px;border-radius:11px;cursor:pointer">+ Új játékos</button>
+          </div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden;margin-bottom:20px">
+            <div style="display:flex;padding:10px 16px;font-size:11px;font-weight:900;letter-spacing:.06em;color:rgba(17,48,46,.45);border-bottom:1px solid #EEF3F3"><span style="flex:1">JÁTÉKOS</span><span style="width:90px">LIGA</span><span style="width:60px;text-align:center">PIN</span><span style="width:120px;text-align:right">MŰVELET</span></div>
+            <sc-for list="{{ players }}" as="p" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;padding:11px 16px;border-bottom:1px solid #F1F5F5">
+                <span style="flex:1;display:flex;align-items:center;gap:10px"><span style="width:30px;height:30px;border-radius:50%;background:#EBF6F5;color:#007E73;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">{{ p.initial }}</span><span style="font-weight:700;font-size:14px">{{ p.name }}</span></span>
+                <span style="width:90px;font-size:12px;color:rgba(17,48,46,.6);font-weight:600">{{ p.league }}</span>
+                <span style="width:60px;text-align:center">{{ p.pinBadge }}</span>
+                <span style="width:120px;display:flex;gap:6px;justify-content:flex-end">
+                  <button style="border:1px solid #E1EAEA;background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#11302E">✏️</button>
+                  <button onClick="{{ p.onDelete }}" style="border:1px solid #f3d2cf;background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#E5484D">🗑</button>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin-bottom:10px">🗄 TÖRÖLT JÁTÉKOSOK <span style="font-weight:700;color:rgba(17,48,46,.4)">· 30 napos visszaállítási ablak</span></div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden">
+            <sc-for list="{{ deleted }}" as="d" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #F1F5F5">
+                <span style="flex:1;font-weight:700;font-size:14px;color:rgba(17,48,46,.7)">{{ d.name }}</span>
+                <span class="mono" style="font-size:11px;color:#92600c;background:#fff3d6;padding:3px 9px;border-radius:7px;margin-right:10px">{{ d.daysLeft }} nap maradt</span>
+                <button onClick="{{ d.onRestore }}" style="border:1px solid #cfe0de;background:#f6faf9;color:#007E73;font-weight:800;font-size:12px;padding:7px 13px;border-radius:9px;cursor:pointer">↩ Visszaállítás</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== RESULTS ===== -->
+        <sc-if value="{{ secResults }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background:#eef6f6;border:1px solid #d3e6e4;border-radius:12px;padding:12px 15px;font-size:13px;color:#11302E;margin-bottom:16px">⚠️ Eredmény mentése azonnal újraszámolja az érintett pontokat, rangsorokat, Wizardot és a Svájci ligát. A mentés <b>upsert</b> — nincs tömeges felülírás.</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ results }}" as="m" hint-placeholder-count="4">
+              <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                <span class="mono" style="font-size:11px;color:rgba(17,48,46,.45);width:42px">#{{ m.id }}</span>
+                <span style="flex:1;min-width:150px;font-weight:700;font-size:14px">{{ m.label }} <span style="{{ m.tagStyle }}">{{ m.tag }}</span></span>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <button onClick="{{ m.decH }}" style="{{ m.stepBtn }}">−</button>
+                  <span style="width:34px;text-align:center;font-weight:900;font-size:18px">{{ m.h }}</span>
+                  <button onClick="{{ m.incH }}" style="{{ m.stepBtn }}">+</button>
+                  <span style="font-weight:900;color:rgba(17,48,46,.35)">:</span>
+                  <button onClick="{{ m.decA }}" style="{{ m.stepBtn }}">−</button>
+                  <span style="width:34px;text-align:center;font-weight:900;font-size:18px">{{ m.a }}</span>
+                  <button onClick="{{ m.incA }}" style="{{ m.stepBtn }}">+</button>
+                </div>
+                <div style="display:flex;gap:7px">
+                  <button onClick="{{ m.onSave }}" style="border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:800;font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer">Mentés</button>
+                  <button onClick="{{ m.onClear }}" style="border:1px solid #f3d2cf;background:#fff;color:#E5484D;font-weight:700;font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer">Törlés</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin:22px 0 10px">🏆 KIESÉSES PÁROSÍTÁSOK (KO)</div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px;font-size:13px;color:rgba(17,48,46,.7)">A KO-helyek a csoporteredményekből <b>automatikusan</b> származnak (bracket.autoUpdateBracket). Kézi felülírás csak vészhelyzetben — minden manuális slot jelölve lesz. <button style="margin-left:6px;border:1px solid #E1EAEA;background:#f6faf9;border-radius:8px;padding:5px 11px;font-weight:700;font-size:12px;cursor:pointer">Slotok megnyitása</button></div>
+        </div>
+        </sc-if>
+
+        <!-- ===== OVERRIDE ===== -->
+        <sc-if value="{{ secOverride }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:520px">
+          <div style="background:#fff7e6;border:1px solid #f3d9a6;border-radius:12px;padding:12px 15px;font-size:13px;color:#92600c;margin-bottom:16px">Egy játékos tippjének felülírása érzékeny művelet — naplózásra kerül és újraszámolja a pontokat (a Wizard-tükrözést is). Csak indokolt esetben.</div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:18px">
+            <label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Játékos</label>
+            <select style="width:100%;margin:6px 0 14px;border:1px solid #E1EAEA;border-radius:11px;padding:11px 13px;font-size:14px;background:#fff"><option>Tomi</option><option>Zsolt</option><option>Bence</option></select>
+            <label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Mérkőzés</label>
+            <select style="width:100%;margin:6px 0 14px;border:1px solid #E1EAEA;border-radius:11px;padding:11px 13px;font-size:14px;background:#fff"><option>#50 · Mexikó – Dél-Korea</option><option>#51 · Brazília – Skócia</option></select>
+            <label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Új tipp</label>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px"><input value="2" style="width:64px;text-align:center;border:1px solid #E1EAEA;border-radius:11px;padding:11px;font-size:18px;font-weight:900"><span style="font-weight:900;color:rgba(17,48,46,.35)">:</span><input value="1" style="width:64px;text-align:center;border:1px solid #E1EAEA;border-radius:11px;padding:11px;font-size:18px;font-weight:900"></div>
+            <button onClick="{{ saveOverride }}" style="width:100%;margin-top:18px;border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:900;font-size:14px;padding:13px;border-radius:12px;cursor:pointer">Felülírás mentése · naplózva</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== BONUSES ===== -->
+        <sc-if value="{{ secBonus }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:18px">
+              <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin-bottom:14px">BÓNUSZ ADÁSA</div>
+              <label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Játékos</label>
+              <select style="width:100%;margin:6px 0 12px;border:1px solid #E1EAEA;border-radius:11px;padding:11px 13px;font-size:14px;background:#fff"><option>Petra</option><option>Tomi</option><option>Zsolt</option></select>
+              <div style="display:flex;gap:10px">
+                <div style="flex:1"><label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Pont</label><input value="+3" style="width:100%;margin-top:6px;border:1px solid #E1EAEA;border-radius:11px;padding:11px 13px;font-size:16px;font-weight:900"></div>
+                <div style="flex:2"><label style="font-size:12px;font-weight:800;color:rgba(17,48,46,.6)">Indok</label><input value="Továbbjutási bónusz" style="width:100%;margin-top:6px;border:1px solid #E1EAEA;border-radius:11px;padding:11px 13px;font-size:14px"></div>
+              </div>
+              <button onClick="{{ awardBonus }}" style="width:100%;margin-top:16px;border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:900;font-size:14px;padding:12px;border-radius:12px;cursor:pointer">🎁 Bónusz jóváírása</button>
+            </div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden">
+              <div style="padding:14px 16px 10px;font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55)">LEGUTÓBBI BÓNUSZOK</div>
+              <sc-for list="{{ bonuses }}" as="b" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;padding:11px 16px;border-top:1px solid #F1F5F5">
+                  <div style="flex:1"><div style="font-weight:700;font-size:14px">{{ b.name }} <span style="font-weight:900;color:#15803d">{{ b.pts }}</span></div><div style="font-size:12px;color:rgba(17,48,46,.55)">{{ b.reason }}</div></div>
+                  <button onClick="{{ b.onRemove }}" style="border:1px solid #f3d2cf;background:#fff;color:#E5484D;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px;cursor:pointer">Visszavonás</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== SWISS ADMIN ===== -->
+        <sc-if value="{{ secSwiss }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:14px 16px;margin-bottom:16px">
+            <span style="font-weight:800;font-size:14px">Forduló:</span>
+            <span style="font-weight:900;font-size:14px;color:#007E73;background:#EBF6F5;padding:6px 14px;border-radius:9px">4. forduló</span>
+            <span style="font-size:12px;color:rgba(17,48,46,.55);flex:1">Állapot: <b style="color:#15803d">publikálva</b> · auto-publish 4 órával az első meccs előtt</span>
+            <button onClick="{{ reshuffle }}" style="border:1px solid #f3d9a6;background:#fff7e6;color:#92600c;font-weight:800;font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer">⟲ Újrasorsolás</button>
+          </div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;padding:11px 16px;font-size:11px;font-weight:900;letter-spacing:.06em;color:rgba(17,48,46,.45);border-bottom:1px solid #EEF3F3"><span>JAVASOLT PÁROSÍTÁSOK</span><span>4. FORDULÓ</span></div>
+            <sc-for list="{{ pairings }}" as="p" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #F1F5F5">
+                <span style="flex:1;text-align:right;font-weight:700;font-size:14px">{{ p.a }}</span>
+                <span style="margin:0 14px;font-size:11px;font-weight:900;color:rgba(17,48,46,.35)">VS</span>
+                <span style="flex:1;font-weight:700;font-size:14px">{{ p.b }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onClick="{{ publishSwiss }}" style="border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:900;font-size:14px;padding:12px 22px;border-radius:12px;cursor:pointer">✓ Párosítás publikálása</button>
+            <button style="border:1px solid #E1EAEA;background:#fff;color:#11302E;font-weight:700;font-size:14px;padding:12px 18px;border-radius:12px;cursor:pointer">Játékos eltávolítása / visszaállítása</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== API / LIVESCORE ===== -->
+        <sc-if value="{{ secApi }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px">
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">API állapot</div><div style="font-size:16px;font-weight:900;margin-top:6px;color:#15803d">● Egészséges</div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Utolsó poll</div><div class="mono" style="font-size:16px;font-weight:700;margin-top:6px">2 perce</div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Élő frissítés</div><div class="mono" style="font-size:16px;font-weight:700;margin-top:6px">12 mp</div></div>
+            <div style="background:#fff;border:1px solid #E1EAEA;border-radius:14px;padding:15px"><div style="font-size:11px;font-weight:800;color:rgba(17,48,46,.5);text-transform:uppercase;letter-spacing:.06em">Kvóta</div><div style="font-size:16px;font-weight:900;margin-top:6px">~38%</div></div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:16px;margin-bottom:16px">
+            <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin-bottom:12px">CACHE FRISSESSÉG</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+              <div style="background:#f6faf9;border-radius:10px;padding:10px 12px"><div style="font-size:12px;font-weight:700">Fixtures</div><div class="mono" style="font-size:11px;color:#15803d;margin-top:2px">friss</div></div>
+              <div style="background:#f6faf9;border-radius:10px;padding:10px 12px"><div style="font-size:12px;font-weight:700">Élő</div><div class="mono" style="font-size:11px;color:#15803d;margin-top:2px">12 mp</div></div>
+              <div style="background:#f6faf9;border-radius:10px;padding:10px 12px"><div style="font-size:12px;font-weight:700">Oddsok</div><div class="mono" style="font-size:11px;color:#15803d;margin-top:2px">4 perce</div></div>
+              <div style="background:#fff7e6;border-radius:10px;padding:10px 12px"><div style="font-size:12px;font-weight:700">Tabella</div><div class="mono" style="font-size:11px;color:#92600c;margin-top:2px">1 órája</div></div>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #f3d2cf;border-radius:16px;padding:16px">
+            <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:#E5484D;margin-bottom:6px">⚠️ VÉSZHELYZETI KÉZI POLL</div>
+            <div style="font-size:13px;color:rgba(17,48,46,.7);margin-bottom:12px">A poll normál esetben automatikus (szerveroldali cron). A kézi lekérés kvótát éget — csak akkor, ha az automata leállt.</div>
+            <label style="display:flex;align-items:center;gap:9px;margin-bottom:12px;cursor:pointer"><input type="checkbox" checked="{{ emergency }}" onChange="{{ toggleEmergency }}" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">Megerősítem: vészhelyzeti üzemmód</span></label>
+            <button onClick="{{ manualPoll }}" style="{{ pollBtnStyle }}">📡 Kézi poll futtatása</button>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== LOG ===== -->
+        <sc-if value="{{ secLog }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:14px">
+            <button style="border:1px solid #E1EAEA;background:#fff;color:#11302E;font-weight:700;font-size:13px;padding:9px 15px;border-radius:10px;cursor:pointer">⬇ CSV export</button>
+            <button onClick="{{ clearLog }}" style="border:1px solid #f3d2cf;background:#fff;color:#E5484D;font-weight:700;font-size:13px;padding:9px 15px;border-radius:10px;cursor:pointer">Napló ürítése</button>
+          </div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden">
+            <sc-for list="{{ logRows }}" as="l" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #F1F5F5">
+                <span class="mono" style="font-size:11px;color:rgba(17,48,46,.45);width:96px;flex:none">{{ l.ts }}</span>
+                <span style="{{ l.typeStyle }}">{{ l.type }}</span>
+                <span style="flex:1;font-size:13px;font-weight:600">{{ l.text }}</span>
+                <span style="font-size:11px;color:rgba(17,48,46,.45)">{{ l.who }}</span>
+                <button onClick="{{ l.onRollback }}" style="{{ l.rbStyle }}">{{ l.rbLabel }}</button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:12px;color:rgba(17,48,46,.5);margin-top:10px">A visszagörgetés jelenleg a <b>tipp-tranzakciókra</b> támogatott. Más típusoknál a gomb tárcsázva.</div>
+        </div>
+        </sc-if>
+
+        <!-- ===== LEADS ===== -->
+        <sc-if value="{{ secLeads }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;overflow:hidden">
+            <sc-for list="{{ leads }}" as="l" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid #F1F5F5;{{ l.dim }}">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;font-size:14px">{{ l.name }} <span class="mono" style="font-size:11px;color:rgba(17,48,46,.5);font-weight:500">· {{ l.contact }}</span></div>
+                  <div style="font-size:13px;color:rgba(17,48,46,.6);margin-top:2px">{{ l.msg }}</div>
+                </div>
+                <span class="mono" style="font-size:11px;color:rgba(17,48,46,.45)">{{ l.date }}</span>
+                <button onClick="{{ l.onToggle }}" style="{{ l.btnStyle }}">{{ l.btnLabel }}</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ===== BACKUP / RESTORE ===== -->
+        <sc-if value="{{ secBackup }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:620px">
+          <div style="background:#fff;border:1px solid #E1EAEA;border-radius:16px;padding:18px;margin-bottom:16px">
+            <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:rgba(17,48,46,.55);margin-bottom:8px">💾 BIZTONSÁGI MENTÉS</div>
+            <div style="font-size:13px;color:rgba(17,48,46,.7);margin-bottom:14px">A teljes játékállapot exportja JSON-ként. Készíts mentést bármilyen kockázatos művelet előtt.</div>
+            <button onClick="{{ exportDb }}" style="border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:800;font-size:14px;padding:11px 20px;border-radius:11px;cursor:pointer">⬇ Állapot exportálása</button>
+            <div class="mono" style="font-size:11px;color:rgba(17,48,46,.45);margin-top:10px">Utolsó mentés: 2026-06-28 09:00 · 35 játékos · 1240 tipp</div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #f3d2cf;border-radius:16px;padding:18px">
+            <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:#E5484D;margin-bottom:8px">♻️ VISSZAÁLLÍTÁS — biztonságos folyamat</div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+              <span style="{{ step1Style }}">1 · Fájl</span>
+              <span style="color:rgba(17,48,46,.3)">→</span>
+              <span style="{{ step2Style }}">2 · Próbafuttatás</span>
+              <span style="color:rgba(17,48,46,.3)">→</span>
+              <span style="{{ step3Style }}">3 · Eltérés</span>
+              <span style="color:rgba(17,48,46,.3)">→</span>
+              <span style="{{ step4Style }}">4 · Megerősítés</span>
+            </div>
+
+            <sc-if value="{{ restoreStep0 }}" hint-placeholder-val="{{ true }}">
+            <div style="border:2px dashed #d3e6e4;border-radius:12px;padding:24px;text-align:center;color:rgba(17,48,46,.6);font-size:13px">JSON mentés ide húzása vagy <button onClick="{{ pickFile }}" style="border:none;background:transparent;color:#007E73;font-weight:800;cursor:pointer;text-decoration:underline">tallózás</button></div>
+            </sc-if>
+
+            <sc-if value="{{ restoreStep1 }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div class="mono" style="font-size:12px;background:#f6faf9;border:1px solid #E1EAEA;border-radius:10px;padding:11px 13px;margin-bottom:14px">📄 tomifoci-backup-2026-06-28.json · 412 KB</div>
+              <div style="font-size:13px;color:rgba(17,48,46,.7);margin-bottom:14px">Próbafuttatás összeveti a mentést az élő állapottal — semmi nem íródik felül, amíg meg nem erősíted.</div>
+              <button onClick="{{ runDryRun }}" style="border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:800;font-size:14px;padding:11px 20px;border-radius:11px;cursor:pointer">▶ Próbafuttatás (dry-run)</button>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ restoreStep2 }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="font-size:12px;font-weight:900;letter-spacing:.06em;color:rgba(17,48,46,.55);margin-bottom:10px">ELTÉRÉSEK A MENTÉS ÉS AZ ÉLŐ KÖZÖTT</div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+                <div class="mono" style="font-size:12px;background:#e4f5ea;border:1px solid #c2e6cf;border-radius:9px;padding:9px 12px">+ 2 tipp hozzáadva (Áron, Levi)</div>
+                <div class="mono" style="font-size:12px;background:#fff7e6;border:1px solid #f3d9a6;border-radius:9px;padding:9px 12px">~ 3 eredmény módosul (#46, #47, #48)</div>
+                <div class="mono" style="font-size:12px;background:#fdeceb;border:1px solid #f3d2cf;border-radius:9px;padding:9px 12px">− 1 bónusz eltávolítva (Petra +3)</div>
+              </div>
+              <div style="font-size:12px;color:#E5484D;font-weight:700;margin-bottom:12px">Egy visszaállítási pont automatikusan készül a felülírás előtt.</div>
+              <button onClick="{{ confirmRestore }}" style="border:none;background:#E5484D;color:#fff;font-weight:800;font-size:14px;padding:12px 22px;border-radius:11px;cursor:pointer">Visszaállítás megerősítése</button>
+              <button onClick="{{ cancelRestore }}" style="border:1px solid #E1EAEA;background:#fff;color:#11302E;font-weight:700;font-size:14px;padding:12px 18px;border-radius:11px;cursor:pointer;margin-left:8px">Mégse</button>
+            </div>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+  </sc-if>
+
+  <!-- ===================== CONFIRM MODAL ===================== -->
+  <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ cancelConfirm }}" style="position:fixed;inset:0;z-index:60;background:rgba(8,54,60,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;animation:tabIn .2s">
+    <div style="background:#fff;border-radius:18px;padding:22px;max-width:380px;width:100%;box-shadow:0 24px 60px rgba(8,54,60,.4)">
+      <div style="font-size:18px;font-weight:900;margin-bottom:8px">{{ confirmTitle }}</div>
+      <div style="font-size:14px;color:rgba(17,48,46,.7);line-height:1.5;margin-bottom:20px">{{ confirmBody }}</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onClick="{{ cancelConfirm }}" style="border:1px solid #E1EAEA;background:#fff;color:#11302E;font-weight:700;font-size:14px;padding:11px 18px;border-radius:11px;cursor:pointer">Mégse</button>
+        <button onClick="{{ doConfirm }}" style="{{ confirmYesStyle }}">{{ confirmYesLabel }}</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== TOAST ===================== -->
+  <sc-if value="{{ showToast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:50%;bottom:28px;z-index:70;background:#11302E;color:#fff;font-weight:700;font-size:13px;padding:12px 20px;border-radius:12px;box-shadow:0 12px 30px rgba(8,54,60,.4);animation:toastIn .25s">{{ toastText }}</div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    authed:false, pin:'', pinError:false,
+    section:'dash',
+    confirm:null, toast:null, recompute:false,
+    emergency:false,
+    restoreStep:0,
+    players:[
+      {name:'Tomi',pin:true,league:'A-liga'},
+      {name:'Zsolt',pin:true,league:'A-liga'},
+      {name:'Bence',pin:true,league:'B-liga'},
+      {name:'Áron',pin:false,league:'A-liga'},
+      {name:'Petra',pin:true,league:'B-liga'},
+      {name:'Dávid',pin:true,league:'—'},
+    ],
+    deleted:[{name:'RégiGábor',daysLeft:12},{name:'Tesztelő',daysLeft:3}],
+    results:[
+      {id:48,label:'Hollandia – Japán',tag:'VÉGE',state:'done',h:2,a:2},
+      {id:49,label:'Franciaország – Norvégia',tag:'ÉLŐ',state:'live',h:1,a:0},
+      {id:50,label:'Mexikó – Dél-Korea',tag:'',state:'open',h:0,a:0},
+      {id:51,label:'Brazília – Skócia',tag:'',state:'open',h:0,a:0},
+    ],
+    bonuses:[
+      {name:'Petra',pts:'+3',reason:'Továbbjutási bónusz'},
+      {name:'Tomi',pts:'+3',reason:'Kedvenc továbbjutott'},
+      {name:'Bence',pts:'+5',reason:'Korai csatlakozó'},
+    ],
+    leads:[
+      {name:'Kovács Béla',contact:'bela@email.hu',msg:'Szeretnék csatlakozni jövőre is',date:'06-20',handled:false},
+      {name:'Nagy Anna',contact:'+36 30 123 4567',msg:'Van még szabad hely a ligában?',date:'06-18',handled:false},
+      {name:'Szabó Pé',contact:'pe@email.hu',msg:'Tetszik a Wizard mód!',date:'06-15',handled:true},
+    ],
+    log:[
+      {ts:'06-28 14:32',type:'prediction',who:'admin',text:'Tipp felülírva — Tomi · #50',rollback:true},
+      {ts:'06-28 14:05',type:'result',who:'rendszer',text:'Eredmény rögzítve — #48 · 2:2',rollback:false},
+      {ts:'06-28 13:40',type:'bonus',who:'admin',text:'Bónusz +3 — Petra',rollback:false},
+      {ts:'06-28 11:12',type:'swiss',who:'admin',text:'4. forduló publikálva',rollback:false},
+      {ts:'06-28 09:00',type:'settings',who:'admin',text:'Játékos átnevezve — Gábor → RégiGábor',rollback:false},
+    ],
+  };
+
+  PAIRINGS=[{a:'Tomi',b:'Zsolt'},{a:'Bence',b:'Áron'},{a:'Petra',b:'Dávid'},{a:'Gergő',b:'Marci'},{a:'Kata',b:'(bye)'}];
+  NAV=[
+    {key:'dash',icon:'📊',label:'Áttekintés'},
+    {key:'players',icon:'👥',label:'Játékosok'},
+    {key:'results',icon:'⚽',label:'Eredmények'},
+    {key:'override',icon:'✏️',label:'Felülírás'},
+    {key:'bonus',icon:'🎁',label:'Bónuszok'},
+    {key:'swiss',icon:'♟',label:'Svájci'},
+    {key:'api',icon:'📡',label:'LiveScore'},
+    {key:'log',icon:'🧾',label:'Napló'},
+    {key:'leads',icon:'📨',label:'Érdeklődők'},
+    {key:'backup',icon:'💾',label:'Mentés'},
+  ];
+  TITLES={
+    dash:['Üzemeltetés','Áttekintés'], players:['Közösség','Játékosok & ligák'],
+    results:['Játék','Eredmények & KO'], override:['Játék','Tipp felülírás'],
+    bonus:['Játék','Bónuszpontok'], swiss:['Játék','Svájci liga — admin'],
+    api:['Integráció','LiveScore & API'], log:['Üzemeltetés','Tranzakciós napló'],
+    leads:['Közösség','Érdeklődők'], backup:['Üzemeltetés','Mentés & visszaállítás'],
+  };
+
+  init(n){return (n||'?').charAt(0).toUpperCase();}
+  go(section){this.setState({section});}
+
+  pressPin(d){
+    let pin=this.state.pin;
+    if(d==='del'){this.setState({pin:pin.slice(0,-1),pinError:false});return;}
+    if(pin.length>=4)return;
+    pin=pin+d;
+    if(pin.length===4){this.setState({pin,authed:true});}
+    else this.setState({pin,pinError:false});
+  }
+  lock(){this.setState({authed:false,pin:''});}
+
+  // audit + toast + recompute
+  toast(msg){
+    this.setState({toast:msg});
+    clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:null}),2600);
+  }
+  audit(text,type){
+    const ts=new Date().toTimeString().slice(0,5);
+    this.setState({log:[{ts:'06-28 '+ts,type:type||'settings',who:'admin',text,rollback:type==='prediction'}, ...this.state.log]});
+  }
+  recompute(){
+    this.setState({recompute:true});
+    clearTimeout(this._rt); this._rt=setTimeout(()=>this.setState({recompute:false}),2200);
+  }
+  act(text,type,recompute){ this.audit(text,type); this.toast('✓ '+text+' · naplózva'); if(recompute)this.recompute(); }
+
+  // confirm flow
+  ask(cfg){ this.setState({confirm:cfg}); }
+  cancelConfirm(){ this.setState({confirm:null}); }
+  doConfirm(){ const c=this.state.confirm; this.setState({confirm:null}); if(c&&c.onYes)c.onYes(); }
+
+  // domain actions
+  deletePlayer(name){
+    this.ask({title:'Játékos törlése?', body:'„'+name+'” archiválásra kerül és 30 napig visszaállítható. A tippjei és származtatott pontjai eltávolításra kerülnek a rangsorból.', danger:true, yes:'Archiválás', onYes:()=>{
+      this.setState({players:this.state.players.filter(p=>p.name!==name), deleted:[{name,daysLeft:30}, ...this.state.deleted]});
+      this.act('Játékos archiválva — '+name,'settings',true);
+    }});
+  }
+  restorePlayer(name){
+    this.setState({deleted:this.state.deleted.filter(d=>d.name!==name), players:[...this.state.players,{name,pin:true,league:'—'}]});
+    this.act('Játékos visszaállítva — '+name,'settings',true);
+  }
+  stepResult(id,side,d){
+    this.setState({results:this.state.results.map(m=>{ if(m.id!==id)return m; let v=(side==='h'?m.h:m.a)+d; if(v<0)v=0; if(v>20)v=20; return {...m,[side]:v}; })});
+  }
+  saveResult(id){ const m=this.state.results.find(x=>x.id===id); this.act('Eredmény mentve — #'+id+' · '+m.h+':'+m.a,'result',true); }
+  clearResult(id){
+    this.ask({title:'Eredmény törlése?', body:'A(z) #'+id+' eredménye törlődik és a kapcsolódó pontok visszaszámolódnak.', danger:true, yes:'Törlés', onYes:()=>{
+      this.setState({results:this.state.results.map(m=>m.id===id?{...m,h:0,a:0,tag:'',state:'open'}:m)});
+      this.act('Eredmény törölve — #'+id,'result',true);
+    }});
+  }
+  saveOverride(){
+    this.ask({title:'Tipp felülírása?', body:'A játékos tippje felülíródik, naplózásra kerül, és a pontok (a Wizard-tükrözéssel együtt) újraszámolódnak.', danger:false, yes:'Felülírás', onYes:()=>this.act('Tipp felülírva — Tomi · #50','prediction',true)});
+  }
+  awardBonus(){ this.act('Bónusz jóváírva — Petra +3','bonus',true); }
+  removeBonus(i){
+    this.ask({title:'Bónusz visszavonása?', body:'A bónusz eltávolításra kerül és a játékos pontszáma csökken.', danger:true, yes:'Visszavonás', onYes:()=>{
+      this.setState({bonuses:this.state.bonuses.filter((b,ix)=>ix!==i)});
+      this.act('Bónusz visszavonva','bonus',true);
+    }});
+  }
+  publishSwiss(){ this.act('4. forduló párosítás publikálva','swiss'); }
+  reshuffle(){
+    this.ask({title:'Forduló újrasorsolása?', body:'A 4. forduló párosításai újragenerálódnak és minden származtatott állapot újraszámolódik. A művelet naplózásra kerül.', danger:true, yes:'Újrasorsolás', onYes:()=>this.act('4. forduló újrasorsolva','swiss',true)});
+  }
+  toggleEmergency(){ this.setState({emergency:!this.state.emergency}); }
+  manualPoll(){
+    if(!this.state.emergency){ this.toast('Előbb erősítsd meg a vészhelyzeti üzemmódot'); return; }
+    this.ask({title:'Kézi poll futtatása?', body:'Azonnali LiveScore lekérés indul. Ez API-kvótát éget — csak ha az automata poll leállt.', danger:true, yes:'Futtatás', onYes:()=>this.act('Kézi LiveScore poll lefuttatva','result')});
+  }
+  rollback(i){
+    const l=this.state.log[i];
+    if(!l.rollback){ this.toast('Ez a típus nem visszagörgethető'); return; }
+    this.ask({title:'Tranzakció visszagörgetése?', body:'A(z) „'+l.text+'” művelet visszavonásra kerül és a pontok újraszámolódnak.', danger:true, yes:'Visszagörgetés', onYes:()=>this.act('Visszagörgetve — '+l.text,'prediction',true)});
+  }
+  clearLog(){
+    this.ask({title:'Napló ürítése?', body:'A tranzakciós napló archiválásra kerül. Ez nem vonja vissza a műveleteket, csak a listát üríti.', danger:true, yes:'Ürítés', onYes:()=>this.toast('✓ Napló archiválva')});
+  }
+  toggleLead(i){
+    this.setState({leads:this.state.leads.map((l,ix)=>ix===i?{...l,handled:!l.handled}:l)});
+    this.toast('✓ Érdeklődő státusz frissítve');
+  }
+  exportDb(){ this.toast('⬇ Mentés letöltése elindult'); }
+  runDryRun(){ this.setState({restoreStep:2}); }
+  confirmRestore(){
+    this.ask({title:'Visszaállítás megerősítése?', body:'A mentés felülírja az élő állapotot a megjelenített eltérésekkel. Visszaállítási pont automatikusan készül.', danger:true, yes:'Visszaállítás', onYes:()=>{ this.setState({restoreStep:0}); this.act('Állapot visszaállítva mentésből','settings',true); }});
+  }
+  cancelRestore(){ this.setState({restoreStep:0}); }
+
+  renderVals(){
+    const s=this.state;
+
+    // login pad
+    const pinDots=[0,1,2,3].map(i=>({style:'width:15px;height:15px;border-radius:50%;'+(i<s.pin.length?'background:#00C9BA;box-shadow:0 0 10px rgba(0,201,186,.6)':'background:transparent;border:2px solid rgba(255,255,255,.35)')}));
+    const kb='height:58px;border:1px solid rgba(255,255,255,.18);border-radius:15px;background:rgba(255,255,255,.08);color:#fff;font-weight:800;font-size:22px;cursor:pointer';
+    const keypad=['1','2','3','4','5','6','7','8','9'].map(d=>({label:d,style:kb,onPress:()=>this.pressPin(d)}));
+    keypad.push({label:'',style:'background:transparent;border:none',onPress:()=>{}});
+    keypad.push({label:'0',style:kb,onPress:()=>this.pressPin('0')});
+    keypad.push({label:'⌫',style:'height:58px;border:none;border-radius:15px;background:transparent;color:rgba(255,255,255,.7);font-weight:700;font-size:20px;cursor:pointer',onPress:()=>this.pressPin('del')});
+
+    // nav
+    const navItems=this.NAV.map(n=>{
+      const active=s.section===n.key;
+      return {icon:n.icon,label:n.label,onClick:()=>this.go(n.key),
+        style:'display:flex;align-items:center;gap:11px;flex:none;border:none;cursor:pointer;padding:10px 13px;border-radius:11px;font-family:inherit;text-align:left;white-space:nowrap;'
+          +(active?'background:#EBF6F5;color:#007E73;font-weight:900':'background:transparent;color:rgba(17,48,46,.65);font-weight:700')};
+    });
+
+    const players=s.players.map(p=>({initial:this.init(p.name),name:p.name,league:p.league,
+      pinBadge:p.pin?'🔑':'—',
+      onDelete:()=>this.deletePlayer(p.name)}));
+    const deleted=s.deleted.map(d=>({name:d.name,daysLeft:d.daysLeft,onRestore:()=>this.restorePlayer(d.name)}));
+
+    const stepBtn='width:34px;height:34px;border:1px solid #E1EAEA;background:#f6faf9;border-radius:9px;font-weight:800;font-size:16px;color:#007E73;cursor:pointer';
+    const results=s.results.map(m=>({
+      id:m.id,label:m.label,tag:m.tag,h:m.h,a:m.a,stepBtn,
+      tagStyle: m.state==='live'?'font-size:10px;font-weight:800;color:#fff;background:#FF3B30;padding:2px 7px;border-radius:6px;margin-left:4px'
+        : m.state==='done'?'font-size:10px;font-weight:800;color:#fff;background:#0B5560;padding:2px 7px;border-radius:6px;margin-left:4px':'',
+      incH:()=>this.stepResult(m.id,'h',1),decH:()=>this.stepResult(m.id,'h',-1),
+      incA:()=>this.stepResult(m.id,'a',1),decA:()=>this.stepResult(m.id,'a',-1),
+      onSave:()=>this.saveResult(m.id),onClear:()=>this.clearResult(m.id),
+    }));
+
+    const bonuses=s.bonuses.map((b,i)=>({name:b.name,pts:b.pts,reason:b.reason,onRemove:()=>this.removeBonus(i)}));
+
+    const typeColors={prediction:'#7c3aed',result:'#0B5560',bonus:'#15803d',swiss:'#b45309',settings:'#475569'};
+    const logRows=s.log.map((l,i)=>({
+      ts:l.ts,type:l.type,text:l.text,who:l.who,
+      typeStyle:'font-size:10px;font-weight:800;color:#fff;background:'+(typeColors[l.type]||'#475569')+';padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;width:84px;text-align:center;flex:none',
+      rbLabel:l.rollback?'↩ Vissza':'—',
+      rbStyle:l.rollback?'border:1px solid #cfe0de;background:#f6faf9;color:#007E73;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px;cursor:pointer':'border:none;background:transparent;color:rgba(17,48,46,.3);font-size:12px;padding:6px 12px;cursor:default',
+      onRollback:()=>this.rollback(i),
+    }));
+
+    const leads=s.leads.map((l,i)=>({
+      name:l.name,contact:l.contact,msg:l.msg,date:l.date,
+      dim:l.handled?'opacity:.55':'',
+      btnLabel:l.handled?'✓ Kezelve':'Kezeltnek jelöl',
+      btnStyle:l.handled?'border:1px solid #c2e6cf;background:#e4f5ea;color:#15803d;font-weight:700;font-size:12px;padding:8px 13px;border-radius:9px;cursor:pointer;flex:none'
+        :'border:1px solid #E1EAEA;background:#fff;color:#11302E;font-weight:700;font-size:12px;padding:8px 13px;border-radius:9px;cursor:pointer;flex:none',
+      onToggle:()=>this.toggleLead(i),
+    }));
+
+    const c=s.confirm;
+    const stepPill=(on,done)=> on?'font-size:12px;font-weight:800;color:#fff;background:#E5484D;padding:6px 11px;border-radius:8px'
+      : done?'font-size:12px;font-weight:800;color:#15803d;background:#e4f5ea;padding:6px 11px;border-radius:8px'
+      : 'font-size:12px;font-weight:700;color:rgba(17,48,46,.45);background:#f1f5f5;padding:6px 11px;border-radius:8px';
+
+    const t=this.TITLES[s.section]||['',''];
+
+    return {
+      isLocked:!s.authed, isUnlocked:s.authed,
+      pinDots, keypad, pinError:s.pinError, lock:()=>this.lock(),
+
+      navItems, secEyebrow:t[0], secTitle:t[1],
+      secDash:s.section==='dash', secPlayers:s.section==='players', secResults:s.section==='results',
+      secOverride:s.section==='override', secBonus:s.section==='bonus', secSwiss:s.section==='swiss',
+      secApi:s.section==='api', secLog:s.section==='log', secLeads:s.section==='leads', secBackup:s.section==='backup',
+      goLog:()=>this.go('log'),
+
+      recompute:s.recompute,
+      audit:s.log.slice(0,5),
+      players, deleted, results, bonuses, logRows, leads,
+      pairings:this.PAIRINGS,
+
+      repairScores:()=>this.ask({title:'Teljes újraszámítás?',body:'Minden származtatott pont, rangsor, Wizard- és Svájci-állás újraépül a tippekből és eredményekből.',danger:false,yes:'Újraszámítás',onYes:()=>this.act('Teljes pont-újraszámítás lefuttatva','settings',true)}),
+      saveOverride:()=>this.saveOverride(),
+      awardBonus:()=>this.awardBonus(),
+      publishSwiss:()=>this.publishSwiss(), reshuffle:()=>this.reshuffle(),
+      emergency:s.emergency, toggleEmergency:()=>this.toggleEmergency(), manualPoll:()=>this.manualPoll(),
+      pollBtnStyle: s.emergency?'border:none;background:#E5484D;color:#fff;font-weight:800;font-size:14px;padding:11px 20px;border-radius:11px;cursor:pointer'
+        :'border:none;background:#f1d6d4;color:#b06a66;font-weight:800;font-size:14px;padding:11px 20px;border-radius:11px;cursor:not-allowed',
+      clearLog:()=>this.clearLog(),
+      exportDb:()=>this.exportDb(),
+
+      restoreStep0:s.restoreStep===0, restoreStep1:s.restoreStep===1, restoreStep2:s.restoreStep===2,
+      pickFile:()=>this.setState({restoreStep:1}),
+      runDryRun:()=>this.runDryRun(), confirmRestore:()=>this.confirmRestore(), cancelRestore:()=>this.cancelRestore(),
+      step1Style:stepPill(s.restoreStep<=1,s.restoreStep>1),
+      step2Style:stepPill(s.restoreStep===1,s.restoreStep>1),
+      step3Style:stepPill(s.restoreStep===2,false),
+      step4Style:stepPill(false,false),
+
+      showConfirm:!!c, confirmTitle:c?c.title:'', confirmBody:c?c.body:'',
+      confirmYesLabel:c?(c.yes||'Megerősítés'):'',
+      confirmYesStyle: c&&c.danger?'border:none;background:#E5484D;color:#fff;font-weight:800;font-size:14px;padding:11px 18px;border-radius:11px;cursor:pointer'
+        :'border:none;background:linear-gradient(160deg,#00C9BA,#00A99B);color:#063b37;font-weight:800;font-size:14px;padding:11px 18px;border-radius:11px;cursor:pointer',
+      cancelConfirm:()=>this.cancelConfirm(), doConfirm:()=>this.doConfirm(),
+
+      showToast:!!s.toast, toastText:s.toast||'',
+    };
+  }
+}
+</script>
+</body>
+</html>
