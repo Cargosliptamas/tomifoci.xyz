@@ -38,7 +38,7 @@ const EN_HU: Record<string, string> = {
   Curacao: 'Curacao', 'New Zealand': 'Új-Zéland', 'Saudi Arabia': 'Szaúd-Arábia'
 }
 // Pull a hu team name from a live.json side ({name} nested English) or a fixtures.json side.
-function teamNameOf(side: any, flat?: string): string {
+function huTeamName(side: any, flat?: string): string {
   const raw = side?.translations?.hu || side?.name || flat || ''
   return canon(EN_HU[raw] || raw)
 }
@@ -176,7 +176,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         continue
       }
       for (const m of data?.match ?? data ?? []) {
-        const ref = findId(teamNameOf(m.home, m.home_name), teamNameOf(m.away, m.away_name))
+        const ref = findId(huTeamName(m.home, m.home_name), huTeamName(m.away, m.away_name))
         if (!ref) continue
         const sc = parseScore(m.scores?.score ?? m.score ?? m.ft_score)
         if (!sc) continue
