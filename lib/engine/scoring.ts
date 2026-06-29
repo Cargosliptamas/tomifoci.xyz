@@ -1,0 +1,195 @@
+import { MATCH_META } from './match-meta'
+import type {
+  Bonus,
+  Favorite,
+  KoTeam,
+  MatchBreakdown,
+  MatchMeta,
+  PlayerEntry,
+  PlayerScore,
+  Prediction,
+  RankingEntry,
+  RankingRow,
+  Result,
+  ScopeStats,
+} from './types'
+
+// ── Core scoring formula (SCORE-01…08) ───────────────────────────────────────
+// Only 90-minute result counts (SCORE-09).
+export function calcPts(pred: { h: number; a: number }, res: { h: number; a: number }): number {
+  if (pred.h === res.h && pred.a === res.a) return 5            // SCORE-01, SCORE-06
+  const predDiff = pred.h - pred.a, resDiff = res.h - res.a
+  const predSign = Math.sign(predDiff), resSign = Math.sign(resDiff)
+  if (predSign !== resSign) return 0                            // SCORE-05
+  if (predDiff === resDiff) return 3                            // SCORE-02, SCORE-07
+  // SCORE-08: draws never reach 2 or 1 (resSign===0 case caught by predDiff===resDiff=0 above)
+  if (pred.h === res.h || pred.a === res.a) return 2            // SCORE-03
+  return 1                                                       // SCORE-04
+}
+
+// ── Active favourite helper (SCORE-10, SCORE-11) ─────────────────────────────
+// Returns null if there is no valid favourite for the given match stage.
+export function getActiveFav(fav: Favorite | null | undefined, stage: string): string | null {
+  if (!fav) return null
+  if (fav.switched && fav.pendingKO && stage === 'group') return fav.team || null
+  return fav.switched ? (fav.newTeam ?? fav.team ?? null) : (fav.team ?? null)
+}
+
+// ── Test-purge threshold: after this timestamp test points drop from 'all' ───
+const TEST_PURGE_TS = Date.UTC(2026, 5, 11, 14, 0, 0) // 2026-06-11 16:00 Budapest (CEST)
+
+// ── computeAllScores ─────────────────────────────────────────────────────────
+// Pure function: no DB, no async. Call with pre-loaded table data.
+// Returns a PlayerScore per (player × community).
+export function computeAllScores(
+  players: PlayerEntry[],
+  community: string,
+  predictions: Prediction[],
+  results: Result[],
+  bonuses: Bonus[],
+  favorites: Favorite[],
+  koTeams: KoTeam[],
+  nowMs = Date.now(),
+): PlayerScore[] {
+  const resultsMap = new Map(results.map(r => [r.matchId, { h: r.h, a: r.a }]))
+
+  // Merge KO team names into meta copy
+  const meta = new Map<number, MatchMeta>()
+  for (const [id, m] of Object.entries(MATCH_META)) {
+    meta.set(Number(id), { ...m })
+  }
+  for (const ko of koTeams) {
+    const m = meta.get(ko.matchId)
+    if (m && m.stage === 'ko') { m.h = ko.home; m.a = ko.away }
+  }
+
+  // SCORE-16: test matches drop from 'all' after purge timestamp
+  const testInAll = nowMs < TEST_PURGE_TS
+
+  const scopeIds: Record<string, number[]> = { all: [], vb: [], group: [], ko: [], test: [] }
+  for (const [id, m] of meta) {
+    if (m.stage === 'group') {
+      scopeIds.all.push(id); scopeIds.group.push(id); scopeIds.vb.push(id)
+    } else if (m.stage === 'ko') {
+      scopeIds.all.push(id); scopeIds.ko.push(id); scopeIds.vb.push(id)
+    } else {
+      scopeIds.test.push(id)
+      if (testInAll) scopeIds.all.push(id)
+    }
+  }
+
+  const bonusScopesWithBonus = new Set(['all', 'vb', 'ko'])
+  const commPreds = predictions.filter(p => (p.community ?? 'hu') === community)
+  const commBonuses = bonuses.filter(b => (b.community ?? 'hu') === community)
+  const commFavs = favorites.filter(f => (f.community ?? 'hu') === community)
+
+  const bonusByPlayer = new Map<string, number>()
+  for (const b of commBonuses) bonusByPlayer.set(b.player, (bonusByPlayer.get(b.player) ?? 0) + b.pts)
+
+  const favByPlayer = new Map<string, Favorite>()
+  for (const f of commFavs) favByPlayer.set(f.player, f)
+
+  const predsByPlayer = new Map<string, Map<number, { h: number; a: number }>>()
+  for (const p of commPreds) {
+    if (!predsByPlayer.has(p.player)) predsByPlayer.set(p.player, new Map())
+    predsByPlayer.get(p.player)!.set(p.matchId, { h: p.h, a: p.a })
+  }
+
+  return players.map(player => {
+    const name = player.name
+    const preds = predsByPlayer.get(name) ?? new Map<number, { h: number; a: number }>()
+    const fav = favByPlayer.get(name) ?? null
+    const bonusPts = bonusByPlayer.get(name) ?? 0
+
+    const byScope: Record<string, ScopeStats> = {}
+    for (const [scope, ids] of Object.entries(scopeIds)) {
+      let matchPts = 0, exact = 0, counted = 0, predicted = 0, totalR = 0
+      for (const mid of ids) {
+        const res = resultsMap.get(mid)
+        if (!res) continue
+        totalR++
+        const pred = preds.get(mid)
+        if (pred) predicted++
+        if (!pred) continue
+        counted++
+        const m = meta.get(mid)!
+        const activeFav = getActiveFav(fav, m.stage)
+        const isFav = !!activeFav && (m.h === activeFav || m.a === activeFav)
+        const p = calcPts(pred, res)
+        matchPts += p * (isFav ? 2 : 1)
+        if (p === 5) exact++
+      }
+      const bonus = bonusScopesWithBonus.has(scope) ? bonusPts : 0
+      const ppg = counted > 0 ? (matchPts + bonus) / counted : 0
+      byScope[scope] = { pts: matchPts + bonus, matchPts, bonus, exact, counted, predicted, totalR, ppg }
+    }
+
+    const byMatch: Record<number, MatchBreakdown> = {}
+    for (const [mid, m] of meta) {
+      const res = resultsMap.get(mid)
+      const pred = preds.get(mid)
+      if (!res || !pred) continue
+      const raw = calcPts(pred, res)
+      const activeFav = getActiveFav(fav, m.stage)
+      const isFav = !!activeFav && (m.h === activeFav || m.a === activeFav)
+      byMatch[mid] = { raw, fav: isFav, pts: raw * (isFav ? 2 : 1), exact: raw === 5 }
+    }
+
+    const all = byScope.all
+    return {
+      player: name,
+      community,
+      pts: all.pts,
+      matchPts: all.matchPts,
+      bonus: all.bonus,
+      exact: all.exact,
+      counted: all.counted,
+      predicted: all.predicted,
+      totalR: all.totalR,
+      ppg: all.ppg,
+      byScope,
+      byMatch,
+    }
+  })
+}
+
+// ── computeRankings ──────────────────────────────────────────────────────────
+// Returns ranking entries for every scope × league combination.
+// Tiebreak: pts → exact → ppg  (SCORE-17)
+export function computeRankings(
+  players: PlayerEntry[],
+  leagues: string[],
+  scores: PlayerScore[],
+  community: string,
+): RankingEntry[] {
+  const prefix = community === 'en' ? 'en_' : ''
+  const scopes = community === 'en'
+    ? ['all', 'vb', 'group', 'ko']
+    : ['all', 'vb', 'test', 'group', 'ko']
+  const allLeagues = ['Mindenki', ...leagues.filter(l => l !== 'Mindenki')]
+
+  const scoreMap = new Map(scores.filter(s => s.community === community).map(s => [s.player, s]))
+  const blank = (name: string): RankingRow => ({ name, pts: 0, matchPts: 0, bonus: 0, exact: 0, counted: 0, predicted: 0, totalR: 0, ppg: 0 })
+
+  const entries: RankingEntry[] = []
+  for (const scope of scopes) {
+    for (const league of allLeagues) {
+      const scopeLeague = `${prefix}${scope}_${league}`
+      const roster = league === 'Mindenki'
+        ? players
+        : players.filter(p => p.leagues.includes(league))
+
+      const rows: RankingRow[] = roster.map(p => {
+        const s = scoreMap.get(p.name)
+        if (!s) return blank(p.name)
+        const sd = s.byScope[scope]
+        if (!sd) return blank(p.name)
+        return { name: p.name, pts: sd.pts, matchPts: sd.matchPts, bonus: sd.bonus, exact: sd.exact, counted: sd.counted, predicted: sd.predicted, totalR: sd.totalR, ppg: sd.ppg }
+      })
+
+      rows.sort((a, b) => b.pts - a.pts || b.exact - a.exact || b.ppg - a.ppg)
+      entries.push({ scopeLeague, rows })
+    }
+  }
+  return entries
+}

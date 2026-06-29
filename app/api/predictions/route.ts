@@ -1,0 +1,41 @@
+import { NextResponse } from 'next/server'
+import { guardWrite } from '@/lib/guard'
+import { savePredictionsToNeon } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+// Save one match score prediction. Truth write; reads recompute live.
+export async function POST(request: Request) {
+  let body: { player?: string; pin?: string; community?: string; matchId?: number; h?: number; a?: number }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
+  }
+
+  const guard = await guardWrite(body)
+  if (!guard.ok) return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status })
+
+  const h = clampScore(body.h)
+  const a = clampScore(body.a)
+  if (h === null || a === null) return NextResponse.json({ ok: false, error: 'bad-score' }, { status: 400 })
+
+  try {
+    await savePredictionsToNeon({
+      player: guard.player,
+      community: guard.community,
+      predictions: { [String(body.matchId)]: { h, a } }
+    })
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown'
+    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+  }
+}
+
+function clampScore(value: unknown): number | null {
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 0 || n > 20) return null
+  return n
+}

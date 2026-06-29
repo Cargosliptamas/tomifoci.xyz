@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  
+  <rect width="64" height="64" rx="14" fill="#15787B"></rect>
+  
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-width="2.6"></circle>
+  
+  <circle cx="32" cy="32" r="21" fill="#ffffff"></circle>
+  
+  <polygon points="32,21.5 42,28.9 38.2,40.6 25.8,40.6 22,28.9" fill="#15787B"></polygon>
+  
+  <g stroke="#15787B" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M32 21.5 L32 11.5"></path>
+    <path d="M42 28.9 L51.5 25.5"></path>
+    <path d="M38.2 40.6 L44 49"></path>
+    <path d="M25.8 40.6 L20 49"></path>
+    <path d="M22 28.9 L12.5 25.5"></path>
+  </g>
+  <text x="32" y="34.5" text-anchor="middle" fill="#ffffff" font-size="7.4" font-weight="800" font-family="Inter,-apple-system,sans-serif">2026</text>
+</svg>

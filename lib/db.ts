@@ -1,0 +1,164 @@
+import { neon } from '@neondatabase/serverless'
+import { buildPublicState } from './client-state'
+import { keyValueJsonTables } from '../db/schema'
+
+type Row = Record<string, any>
+
+export function getSql() {
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error('DATABASE_URL not set')
+  return neon(url)
+}
+
+export async function getImportedRows(tableName: string): Promise<Record<string, any>[]> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT payload FROM imported_rows
+    WHERE table_name = ${tableName}
+    ORDER BY id ASC
+  `
+  return rows.map((r) => r.payload as Record<string, any>)
+}
+
+export async function getImportedRow(tableName: string): Promise<Record<string, any> | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT payload FROM imported_rows
+    WHERE table_name = ${tableName}
+    ORDER BY id ASC
+    LIMIT 1
+  `
+  return (rows[0]?.payload as Record<string, any>) ?? null
+}
+
+// convexId must be unique per tableName. Use a fixed sentinel like 'singleton' for
+// single-row tables (adminAuth, game_state_*).
+export async function upsertImportedRow(
+  tableName: string,
+  convexId: string,
+  payload: Record<string, any>,
+  convexCreationTime?: number | null
+): Promise<void> {
+  const sql = getSql()
+  await sql`
+    INSERT INTO imported_rows (table_name, convex_id, payload, convex_creation_time)
+    VALUES (${tableName}, ${convexId}, ${JSON.stringify(payload)}::jsonb, ${convexCreationTime ?? null})
+    ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
+  `
+}
+
+export async function importedRowCount(tableName: string): Promise<number> {
+  const sql = getSql()
+  const rows = await sql`SELECT COUNT(*)::int AS n FROM imported_rows WHERE table_name = ${tableName}`
+  return (rows[0]?.n as number) ?? 0
+}
+
+export async function loadPublicStateFromNeon(community: 'hu' | 'en' = 'hu') {
+  const tables = await loadStateTablesFromNeon()
+  return buildPublicState(tables, { community })
+}
+
+export async function verifyPlayerPinInNeon(player: string, pin: string, community: 'hu' | 'en' = 'hu') {
+  const rows = await getImportedRows('pinHashes')
+  if (rows.length === 0) return { ok: false, reason: 'pin-hashes-empty' as const }
+
+  const row = rows.find((entry) => entry.name === player && (entry.community ?? 'hu') === community)
+  if (!row?.salt || !row?.hash) return { ok: false, reason: 'player-pin-not-found' as const }
+
+  const hash = await sha256Hex(`${row.salt}:${pin}`)
+  return { ok: hash === row.hash, reason: hash === row.hash ? ('ok' as const) : ('bad-pin' as const) }
+}
+
+export async function savePredictionsToNeon(args: {
+  player: string
+  community: 'hu' | 'en'
+  predictions: Record<string, { h: number; a: number }>
+}) {
+  const sql = getSql()
+  for (const [matchId, score] of Object.entries(args.predictions)) {
+    await sql`
+      INSERT INTO predictions (player, match_id, h, a, community)
+      VALUES (${args.player}, ${Number(matchId)}, ${score.h}, ${score.a}, ${args.community})
+      ON CONFLICT (player, match_id, community)
+      DO UPDATE SET h = EXCLUDED.h, a = EXCLUDED.a
+    `
+  }
+}
+
+export async function saveWizardPickToNeon(args: {
+  player: string
+  community: 'hu' | 'en'
+  matchId: number
+  pick: '1' | 'X' | '2'
+  oddsAtPick?: number | null
+  oddsSource?: string | null
+}) {
+  await upsertImportedRow('wizardPicks', `${args.community}:${args.player}:${args.matchId}`, {
+    player: args.player,
+    community: args.community,
+    matchId: args.matchId,
+    pick: args.pick,
+    oddsAtPick: args.oddsAtPick ?? null,
+    oddsSource: args.oddsSource ?? 'rewrite-v4',
+    lockedAt: Date.now()
+  })
+}
+
+async function loadStateTablesFromNeon(): Promise<Record<string, Row[]>> {
+  const sql = getSql()
+  const [settingsRows, predictionRows, resultRows, importedRows] = await Promise.all([
+    sql`
+      SELECT
+        leagues,
+        private_leagues AS "privateLeagues",
+        players,
+        en_players AS "enPlayers",
+        admin_totp AS "adminTotp",
+        ls2_key AS "ls2Key",
+        ls2_secret AS "ls2Secret",
+        ls_auto_sync AS "lsAutoSync",
+        daily_stats AS "dailyStats",
+        landing_skin AS "landingSkin",
+        news_board AS "newsBoard"
+      FROM settings
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+    sql`
+      SELECT player, match_id AS "matchId", h, a, community
+      FROM predictions
+      ORDER BY id ASC
+    `,
+    sql`
+      SELECT match_id AS "matchId", h, a, pen_h AS "pen_h", pen_a AS "pen_a"
+      FROM results
+      ORDER BY id ASC
+    `,
+    sql`
+      SELECT table_name AS "tableName", payload
+      FROM imported_rows
+      ORDER BY id ASC
+    `
+  ])
+
+  const tables: Record<string, Row[]> = {
+    settings: settingsRows as Row[],
+    predictions: predictionRows as Row[],
+    results: resultRows as Row[]
+  }
+
+  for (const table of Object.keys(keyValueJsonTables)) {
+    tables[table] = []
+  }
+
+  for (const row of importedRows as Array<{ tableName: string; payload: Row }>) {
+    ;(tables[row.tableName] ??= []).push(row.payload)
+  }
+
+  return tables
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}

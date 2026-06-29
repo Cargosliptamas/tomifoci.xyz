@@ -1,0 +1,76 @@
+import type { GameState } from './types'
+import { encodeClientKey } from './keys'
+import { MATCH_BY_ID, type Fixture } from './fixtures'
+
+export type MatchStatus = 'finished' | 'live' | 'open' | 'locked'
+
+const MATCH_WINDOW_MS = 2.5 * 60 * 60 * 1000
+
+export function myPrediction(state: GameState | null, player: string, matchId: number) {
+  return state?.predictions?.[encodeClientKey(player)]?.[String(matchId)] ?? null
+}
+
+export function myWizard(state: GameState | null, player: string, matchId: number) {
+  return state?.wizardPicks?.[encodeClientKey(player)]?.[String(matchId)] ?? null
+}
+
+export function resultFor(state: GameState | null, matchId: number) {
+  return state?.results?.[String(matchId)] ?? null
+}
+
+export function kickoffMs(fixture: Fixture): number {
+  const t = new Date(fixture.date).getTime()
+  return Number.isFinite(t) ? t : Infinity
+}
+
+export function statusOf(state: GameState | null, fixture: Fixture, now = Date.now()): MatchStatus {
+  if (resultFor(state, fixture.id)) return 'finished'
+  const ko = kickoffMs(fixture)
+  if (now >= ko && now < ko + MATCH_WINDOW_MS) return 'live'
+  if (!fixture.noLock && now >= ko) return 'locked'
+  return 'open'
+}
+
+export function countdown(fixture: Fixture, now = Date.now()): string {
+  const ko = kickoffMs(fixture)
+  const diff = ko - now
+  if (diff <= 0) return fixture.noLock ? 'nyitva' : 'lezárva'
+  const h = Math.floor(diff / 3_600_000)
+  const m = Math.floor((diff % 3_600_000) / 60_000)
+  if (h >= 24) return `${Math.floor(h / 24)} nap`
+  if (h >= 1) return `${h}ó ${m}p`
+  if (m <= 6) return `${m} perc!`
+  return `${m} perc`
+}
+
+// Decimal odds for a match from apiCache, if present. Returns [home, draw, away] or null.
+export function oddsFor(state: GameState | null, matchId: number): [number, number, number] | null {
+  const cache = state?.apiCache?.odds?.data as Record<string, { h?: number; x?: number; a?: number }> | undefined
+  const o = cache?.[String(matchId)]
+  if (o && o.h && o.x && o.a) return [o.h, o.x, o.a]
+  return null
+}
+
+export function isFavoriteMatch(state: GameState | null, player: string, fixture: Fixture): boolean {
+  const fav = state?.favorites?.[encodeClientKey(player)]
+  if (!fav?.team) return false
+  const team = fav.switched ? fav.newTeam || fav.team : fav.team
+  return fixture.home === team || fixture.away === team
+}
+
+// Buckets the fixtures into feed sections for the player home screen.
+export function bucketFixtures(state: GameState | null, fixtures: Fixture[], now = Date.now()) {
+  const live: Fixture[] = []
+  const open: Fixture[] = []
+  const finished: Fixture[] = []
+  for (const f of fixtures) {
+    const s = statusOf(state, f, now)
+    if (s === 'live') live.push(f)
+    else if (s === 'finished') finished.push(f)
+    else open.push(f) // open + locked both shown in the tippable list (locked rendered read-only)
+  }
+  const byKo = (a: Fixture, b: Fixture) => kickoffMs(a) - kickoffMs(b)
+  return { live: live.sort(byKo), open: open.sort(byKo), finished: finished.sort(byKo).reverse() }
+}
+
+export { MATCH_BY_ID }

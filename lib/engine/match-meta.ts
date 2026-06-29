@@ -1,0 +1,199 @@
+import type { MatchMeta, MatchStage } from './types'
+
+// WC 2026 kickoff times (Budapest/CEST = +02:00), matches 1–104.
+// Test/friendly matches (≥ 999) have no kickoff — never locked.
+export const KICKOFFS: Record<number, string> = {
+  1: '2026-06-11T21:00:00+02:00', 2: '2026-06-12T04:00:00+02:00', 3: '2026-06-12T21:00:00+02:00', 4: '2026-06-13T03:00:00+02:00',
+  5: '2026-06-13T21:00:00+02:00', 6: '2026-06-14T00:00:00+02:00', 7: '2026-06-14T03:00:00+02:00', 8: '2026-06-14T06:00:00+02:00',
+  9: '2026-06-14T19:00:00+02:00', 10: '2026-06-14T22:00:00+02:00', 11: '2026-06-15T01:00:00+02:00', 12: '2026-06-15T04:00:00+02:00',
+  13: '2026-06-15T18:00:00+02:00', 14: '2026-06-15T21:00:00+02:00', 15: '2026-06-16T00:00:00+02:00', 16: '2026-06-16T03:00:00+02:00',
+  17: '2026-06-16T21:00:00+02:00', 18: '2026-06-17T00:00:00+02:00', 19: '2026-06-17T03:00:00+02:00', 20: '2026-06-17T06:00:00+02:00',
+  21: '2026-06-17T19:00:00+02:00', 22: '2026-06-17T22:00:00+02:00', 23: '2026-06-18T01:00:00+02:00', 24: '2026-06-18T04:00:00+02:00',
+  25: '2026-06-18T18:00:00+02:00', 26: '2026-06-18T21:00:00+02:00', 27: '2026-06-19T00:00:00+02:00', 28: '2026-06-19T03:00:00+02:00',
+  29: '2026-06-19T21:00:00+02:00', 30: '2026-06-20T00:00:00+02:00', 31: '2026-06-20T03:00:00+02:00', 32: '2026-06-20T06:00:00+02:00',
+  33: '2026-06-20T19:00:00+02:00', 34: '2026-06-20T22:00:00+02:00', 35: '2026-06-21T02:00:00+02:00', 36: '2026-06-21T06:00:00+02:00',
+  37: '2026-06-21T18:00:00+02:00', 38: '2026-06-21T21:00:00+02:00', 39: '2026-06-22T00:00:00+02:00', 40: '2026-06-22T03:00:00+02:00',
+  41: '2026-06-22T19:00:00+02:00', 42: '2026-06-22T23:00:00+02:00', 43: '2026-06-23T02:00:00+02:00', 44: '2026-06-23T05:00:00+02:00',
+  45: '2026-06-23T19:00:00+02:00', 46: '2026-06-23T22:00:00+02:00', 47: '2026-06-24T01:00:00+02:00', 48: '2026-06-24T04:00:00+02:00',
+  49: '2026-06-24T21:00:00+02:00', 50: '2026-06-24T21:00:00+02:00', 51: '2026-06-25T00:00:00+02:00', 52: '2026-06-25T00:00:00+02:00',
+  53: '2026-06-25T03:00:00+02:00', 54: '2026-06-25T03:00:00+02:00', 55: '2026-06-25T22:00:00+02:00', 56: '2026-06-25T22:00:00+02:00',
+  57: '2026-06-26T01:00:00+02:00', 58: '2026-06-26T01:00:00+02:00', 59: '2026-06-26T04:00:00+02:00', 60: '2026-06-26T04:00:00+02:00',
+  61: '2026-06-26T21:00:00+02:00', 62: '2026-06-26T21:00:00+02:00', 63: '2026-06-27T02:00:00+02:00', 64: '2026-06-27T02:00:00+02:00',
+  65: '2026-06-27T05:00:00+02:00', 66: '2026-06-27T05:00:00+02:00', 67: '2026-06-27T23:00:00+02:00', 68: '2026-06-27T23:00:00+02:00',
+  69: '2026-06-28T01:30:00+02:00', 70: '2026-06-28T01:30:00+02:00', 71: '2026-06-28T04:00:00+02:00', 72: '2026-06-28T04:00:00+02:00',
+  73: '2026-06-28T21:00:00+02:00', 74: '2026-06-29T19:00:00+02:00', 75: '2026-06-29T22:30:00+02:00', 76: '2026-06-30T03:00:00+02:00',
+  77: '2026-06-30T19:00:00+02:00', 78: '2026-06-30T23:00:00+02:00', 79: '2026-07-01T03:00:00+02:00', 80: '2026-07-01T18:00:00+02:00',
+  81: '2026-07-01T22:00:00+02:00', 82: '2026-07-02T02:00:00+02:00', 83: '2026-07-02T21:00:00+02:00', 84: '2026-07-03T01:00:00+02:00',
+  85: '2026-07-03T05:00:00+02:00', 86: '2026-07-03T20:00:00+02:00', 87: '2026-07-04T00:00:00+02:00', 88: '2026-07-04T03:30:00+02:00',
+  89: '2026-07-04T19:00:00+02:00', 90: '2026-07-04T23:00:00+02:00', 91: '2026-07-05T22:00:00+02:00', 92: '2026-07-06T02:00:00+02:00',
+  93: '2026-07-06T21:00:00+02:00', 94: '2026-07-07T02:00:00+02:00', 95: '2026-07-07T18:00:00+02:00', 96: '2026-07-07T22:00:00+02:00',
+  97: '2026-07-09T22:00:00+02:00', 98: '2026-07-10T21:00:00+02:00', 99: '2026-07-11T23:00:00+02:00', 100: '2026-07-12T03:00:00+02:00',
+  101: '2026-07-14T21:00:00+02:00', 102: '2026-07-15T21:00:00+02:00', 103: '2026-07-18T23:00:00+02:00', 104: '2026-07-19T21:00:00+02:00',
+}
+
+// WC group matches 1–72: teams filled in. KO matches 73–104: empty strings at
+// compile time; caller merges koTeams table at runtime before scoring.
+const GROUP: MatchStage = 'group'
+const KO: MatchStage = 'ko'
+const TEST: MatchStage = 'test'
+
+export const MATCH_META: Record<number, MatchMeta> = {
+  // Group A
+  1: { stage: GROUP, h: 'Mexikó', a: 'Dél-Afrika', kickoff: KICKOFFS[1] },
+  2: { stage: GROUP, h: 'Dél-Korea', a: 'Csehország', kickoff: KICKOFFS[2] },
+  25: { stage: GROUP, h: 'Csehország', a: 'Dél-Afrika', kickoff: KICKOFFS[25] },
+  28: { stage: GROUP, h: 'Mexikó', a: 'Dél-Korea', kickoff: KICKOFFS[28] },
+  53: { stage: GROUP, h: 'Csehország', a: 'Mexikó', kickoff: KICKOFFS[53] },
+  54: { stage: GROUP, h: 'Dél-Afrika', a: 'Dél-Korea', kickoff: KICKOFFS[54] },
+  // Group B
+  3: { stage: GROUP, h: 'Kanada', a: 'Bosznia-Hercegovina', kickoff: KICKOFFS[3] },
+  5: { stage: GROUP, h: 'Katar', a: 'Svájc', kickoff: KICKOFFS[5] },
+  26: { stage: GROUP, h: 'Svájc', a: 'Bosznia-Hercegovina', kickoff: KICKOFFS[26] },
+  27: { stage: GROUP, h: 'Kanada', a: 'Katar', kickoff: KICKOFFS[27] },
+  49: { stage: GROUP, h: 'Svájc', a: 'Kanada', kickoff: KICKOFFS[49] },
+  50: { stage: GROUP, h: 'Bosznia-Hercegovina', a: 'Katar', kickoff: KICKOFFS[50] },
+  // Group C
+  6: { stage: GROUP, h: 'Brazília', a: 'Marokkó', kickoff: KICKOFFS[6] },
+  7: { stage: GROUP, h: 'Haiti', a: 'Skócia', kickoff: KICKOFFS[7] },
+  30: { stage: GROUP, h: 'Skócia', a: 'Marokkó', kickoff: KICKOFFS[30] },
+  31: { stage: GROUP, h: 'Brazília', a: 'Haiti', kickoff: KICKOFFS[31] },
+  51: { stage: GROUP, h: 'Skócia', a: 'Brazília', kickoff: KICKOFFS[51] },
+  52: { stage: GROUP, h: 'Marokkó', a: 'Haiti', kickoff: KICKOFFS[52] },
+  // Group D
+  4: { stage: GROUP, h: 'Egyesült Államok', a: 'Paraguay', kickoff: KICKOFFS[4] },
+  8: { stage: GROUP, h: 'Ausztrália', a: 'Törökország', kickoff: KICKOFFS[8] },
+  29: { stage: GROUP, h: 'Egyesült Államok', a: 'Ausztrália', kickoff: KICKOFFS[29] },
+  32: { stage: GROUP, h: 'Törökország', a: 'Paraguay', kickoff: KICKOFFS[32] },
+  59: { stage: GROUP, h: 'Törökország', a: 'Egyesült Államok', kickoff: KICKOFFS[59] },
+  60: { stage: GROUP, h: 'Paraguay', a: 'Ausztrália', kickoff: KICKOFFS[60] },
+  // Group E
+  9: { stage: GROUP, h: 'Németország', a: 'Curacao', kickoff: KICKOFFS[9] },
+  11: { stage: GROUP, h: 'Elefántcsontpart', a: 'Ecuador', kickoff: KICKOFFS[11] },
+  34: { stage: GROUP, h: 'Németország', a: 'Elefántcsontpart', kickoff: KICKOFFS[34] },
+  35: { stage: GROUP, h: 'Ecuador', a: 'Curacao', kickoff: KICKOFFS[35] },
+  55: { stage: GROUP, h: 'Curacao', a: 'Elefántcsontpart', kickoff: KICKOFFS[55] },
+  56: { stage: GROUP, h: 'Ecuador', a: 'Németország', kickoff: KICKOFFS[56] },
+  // Group F
+  10: { stage: GROUP, h: 'Hollandia', a: 'Japán', kickoff: KICKOFFS[10] },
+  12: { stage: GROUP, h: 'Svédország', a: 'Tunézia', kickoff: KICKOFFS[12] },
+  33: { stage: GROUP, h: 'Hollandia', a: 'Svédország', kickoff: KICKOFFS[33] },
+  36: { stage: GROUP, h: 'Tunézia', a: 'Japán', kickoff: KICKOFFS[36] },
+  57: { stage: GROUP, h: 'Japán', a: 'Svédország', kickoff: KICKOFFS[57] },
+  58: { stage: GROUP, h: 'Tunézia', a: 'Hollandia', kickoff: KICKOFFS[58] },
+  // Group G
+  14: { stage: GROUP, h: 'Belgium', a: 'Egyiptom', kickoff: KICKOFFS[14] },
+  16: { stage: GROUP, h: 'Irán', a: 'Új-Zéland', kickoff: KICKOFFS[16] },
+  38: { stage: GROUP, h: 'Belgium', a: 'Irán', kickoff: KICKOFFS[38] },
+  40: { stage: GROUP, h: 'Új-Zéland', a: 'Egyiptom', kickoff: KICKOFFS[40] },
+  65: { stage: GROUP, h: 'Egyiptom', a: 'Irán', kickoff: KICKOFFS[65] },
+  66: { stage: GROUP, h: 'Új-Zéland', a: 'Belgium', kickoff: KICKOFFS[66] },
+  // Group H
+  13: { stage: GROUP, h: 'Spanyolország', a: 'Zöld-foki-szigetek', kickoff: KICKOFFS[13] },
+  15: { stage: GROUP, h: 'Szaúd-Arábia', a: 'Uruguay', kickoff: KICKOFFS[15] },
+  37: { stage: GROUP, h: 'Spanyolország', a: 'Szaúd-Arábia', kickoff: KICKOFFS[37] },
+  39: { stage: GROUP, h: 'Uruguay', a: 'Zöld-foki-szigetek', kickoff: KICKOFFS[39] },
+  63: { stage: GROUP, h: 'Zöld-foki-szigetek', a: 'Szaúd-Arábia', kickoff: KICKOFFS[63] },
+  64: { stage: GROUP, h: 'Uruguay', a: 'Spanyolország', kickoff: KICKOFFS[64] },
+  // Group I
+  17: { stage: GROUP, h: 'Franciaország', a: 'Szenegál', kickoff: KICKOFFS[17] },
+  18: { stage: GROUP, h: 'Irak', a: 'Norvégia', kickoff: KICKOFFS[18] },
+  42: { stage: GROUP, h: 'Franciaország', a: 'Irak', kickoff: KICKOFFS[42] },
+  43: { stage: GROUP, h: 'Norvégia', a: 'Szenegál', kickoff: KICKOFFS[43] },
+  61: { stage: GROUP, h: 'Norvégia', a: 'Franciaország', kickoff: KICKOFFS[61] },
+  62: { stage: GROUP, h: 'Szenegál', a: 'Irak', kickoff: KICKOFFS[62] },
+  // Group J
+  19: { stage: GROUP, h: 'Argentína', a: 'Algéria', kickoff: KICKOFFS[19] },
+  20: { stage: GROUP, h: 'Ausztria', a: 'Jordánia', kickoff: KICKOFFS[20] },
+  41: { stage: GROUP, h: 'Argentína', a: 'Ausztria', kickoff: KICKOFFS[41] },
+  44: { stage: GROUP, h: 'Jordánia', a: 'Algéria', kickoff: KICKOFFS[44] },
+  71: { stage: GROUP, h: 'Algéria', a: 'Ausztria', kickoff: KICKOFFS[71] },
+  72: { stage: GROUP, h: 'Jordánia', a: 'Argentína', kickoff: KICKOFFS[72] },
+  // Group K
+  21: { stage: GROUP, h: 'Portugália', a: 'Kongói DK', kickoff: KICKOFFS[21] },
+  24: { stage: GROUP, h: 'Üzbegisztán', a: 'Kolumbia', kickoff: KICKOFFS[24] },
+  45: { stage: GROUP, h: 'Portugália', a: 'Üzbegisztán', kickoff: KICKOFFS[45] },
+  48: { stage: GROUP, h: 'Kolumbia', a: 'Kongói DK', kickoff: KICKOFFS[48] },
+  69: { stage: GROUP, h: 'Kolumbia', a: 'Portugália', kickoff: KICKOFFS[69] },
+  70: { stage: GROUP, h: 'Kongói DK', a: 'Üzbegisztán', kickoff: KICKOFFS[70] },
+  // Group L
+  22: { stage: GROUP, h: 'Anglia', a: 'Horvátország', kickoff: KICKOFFS[22] },
+  23: { stage: GROUP, h: 'Ghána', a: 'Panama', kickoff: KICKOFFS[23] },
+  46: { stage: GROUP, h: 'Anglia', a: 'Ghána', kickoff: KICKOFFS[46] },
+  47: { stage: GROUP, h: 'Panama', a: 'Horvátország', kickoff: KICKOFFS[47] },
+  67: { stage: GROUP, h: 'Panama', a: 'Anglia', kickoff: KICKOFFS[67] },
+  68: { stage: GROUP, h: 'Horvátország', a: 'Ghána', kickoff: KICKOFFS[68] },
+  // KO (73–104): teams filled from koTeams table at runtime
+  73: { stage: KO, h: '', a: '', kickoff: KICKOFFS[73] },
+  74: { stage: KO, h: '', a: '', kickoff: KICKOFFS[74] },
+  75: { stage: KO, h: '', a: '', kickoff: KICKOFFS[75] },
+  76: { stage: KO, h: '', a: '', kickoff: KICKOFFS[76] },
+  77: { stage: KO, h: '', a: '', kickoff: KICKOFFS[77] },
+  78: { stage: KO, h: '', a: '', kickoff: KICKOFFS[78] },
+  79: { stage: KO, h: '', a: '', kickoff: KICKOFFS[79] },
+  80: { stage: KO, h: '', a: '', kickoff: KICKOFFS[80] },
+  81: { stage: KO, h: '', a: '', kickoff: KICKOFFS[81] },
+  82: { stage: KO, h: '', a: '', kickoff: KICKOFFS[82] },
+  83: { stage: KO, h: '', a: '', kickoff: KICKOFFS[83] },
+  84: { stage: KO, h: '', a: '', kickoff: KICKOFFS[84] },
+  85: { stage: KO, h: '', a: '', kickoff: KICKOFFS[85] },
+  86: { stage: KO, h: '', a: '', kickoff: KICKOFFS[86] },
+  87: { stage: KO, h: '', a: '', kickoff: KICKOFFS[87] },
+  88: { stage: KO, h: '', a: '', kickoff: KICKOFFS[88] },
+  89: { stage: KO, h: '', a: '', kickoff: KICKOFFS[89] },
+  90: { stage: KO, h: '', a: '', kickoff: KICKOFFS[90] },
+  91: { stage: KO, h: '', a: '', kickoff: KICKOFFS[91] },
+  92: { stage: KO, h: '', a: '', kickoff: KICKOFFS[92] },
+  93: { stage: KO, h: '', a: '', kickoff: KICKOFFS[93] },
+  94: { stage: KO, h: '', a: '', kickoff: KICKOFFS[94] },
+  95: { stage: KO, h: '', a: '', kickoff: KICKOFFS[95] },
+  96: { stage: KO, h: '', a: '', kickoff: KICKOFFS[96] },
+  97: { stage: KO, h: '', a: '', kickoff: KICKOFFS[97] },
+  98: { stage: KO, h: '', a: '', kickoff: KICKOFFS[98] },
+  99: { stage: KO, h: '', a: '', kickoff: KICKOFFS[99] },
+  100: { stage: KO, h: '', a: '', kickoff: KICKOFFS[100] },
+  101: { stage: KO, h: '', a: '', kickoff: KICKOFFS[101] },
+  102: { stage: KO, h: '', a: '', kickoff: KICKOFFS[102] },
+  103: { stage: KO, h: '', a: '', kickoff: KICKOFFS[103] },
+  104: { stage: KO, h: '', a: '', kickoff: KICKOFFS[104] },
+  // Test / friendly matches
+  999: { stage: TEST, h: 'Magyarország', a: 'Anglia', kickoff: '' },
+  1001: { stage: TEST, h: 'Egyesült Államok', a: 'Németország', kickoff: '' },
+  1002: { stage: TEST, h: 'Czigánd SE', a: 'Nagykanizsa', kickoff: '' },
+  1003: { stage: TEST, h: 'Magyarország', a: 'Kazahsztán', kickoff: '' },
+  1004: { stage: TEST, h: 'Magyarország', a: 'Olaszország', kickoff: '' },
+  1005: { stage: TEST, h: 'Magyarország', a: 'Argentína', kickoff: '' },
+  1006: { stage: TEST, h: 'Magyarország', a: 'Brazília', kickoff: '' },
+  1007: { stage: TEST, h: 'Portugália', a: 'Chile', kickoff: '' },
+  1008: { stage: TEST, h: 'Belgium', a: 'Tunézia', kickoff: '' },
+  1009: { stage: TEST, h: 'Anglia', a: 'Új-Zéland', kickoff: '' },
+  1010: { stage: TEST, h: 'Brazília', a: 'Egyiptom', kickoff: '' },
+  1011: { stage: TEST, h: 'Argentína', a: 'Honduras', kickoff: '' },
+  1012: { stage: TEST, h: 'Horvátország', a: 'Szlovénia', kickoff: '' },
+  1013: { stage: TEST, h: 'Marokkó', a: 'Norvégia', kickoff: '' },
+  1014: { stage: TEST, h: 'Franciaország', a: 'Észak-Írország', kickoff: '' },
+  1015: { stage: TEST, h: 'Hollandia', a: 'Üzbegisztán', kickoff: '' },
+  1016: { stage: TEST, h: 'Argentína', a: 'Izland', kickoff: '' },
+  1017: { stage: TEST, h: 'Anglia', a: 'Costa Rica', kickoff: '' },
+}
+
+// WC group matches in kickoff order → 13 rounds × 8 matches.
+// Built once at module load. Only WC matches 1–104 (no test matches).
+const WC_IDS_SORTED = (Object.keys(KICKOFFS) as unknown as number[])
+  .map(Number)
+  .sort((a, b) => new Date(KICKOFFS[a]).getTime() - new Date(KICKOFFS[b]).getTime() || a - b)
+
+export const SWISS_ROUNDS: number[][] = Array.from({ length: 13 }, (_, i) =>
+  WC_IDS_SORTED.slice(i * 8, i * 8 + 8)
+)
+
+// True if match has kicked off (server-side lock).
+// Test matches (id ≥ 999) are never locked.
+export function isKickedOff(matchId: number, nowMs: number): boolean {
+  const iso = KICKOFFS[matchId]
+  return !!iso && nowMs >= new Date(iso).getTime()
+}
+
+// Timestamp (ms) of the first kickoff in a given Swiss round (1-indexed).
+export function roundFirstKickoffMs(round: number): number {
+  return Math.min(...SWISS_ROUNDS[round - 1].map(id => new Date(KICKOFFS[id]).getTime()))
+}

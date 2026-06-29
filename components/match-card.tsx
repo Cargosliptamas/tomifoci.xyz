@@ -1,0 +1,221 @@
+'use client'
+
+import { useState } from 'react'
+import { useGame } from '@/components/game-provider'
+import { flag, type Fixture } from '@/lib/fixtures'
+import {
+  countdown,
+  isFavoriteMatch,
+  myPrediction,
+  myWizard,
+  oddsFor,
+  statusOf
+} from '@/lib/derive'
+
+export function MatchCard({ fixture }: { fixture: Fixture }) {
+  const { state, session, savePrediction, saveWizard } = useGame()
+  const me = session?.player ?? ''
+
+  const [expanded, setExpanded] = useState(false)
+  const status = statusOf(state, fixture)
+  const locked = status === 'locked'
+  const fav = me ? isFavoriteMatch(state, me, fixture) : false
+
+  const savedPred = me ? myPrediction(state, me, fixture.id) : null
+  const savedWiz = me ? myWizard(state, me, fixture.id) : null
+  const odds = oddsFor(state, fixture.id)
+
+  const [h, setH] = useState(savedPred?.h ?? 0)
+  const [a, setA] = useState(savedPred?.a ?? 0)
+  const [wiz, setWiz] = useState<'1' | 'X' | '2' | null>(savedWiz?.pick ?? null)
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState(Boolean(savedPred))
+  const [err, setErr] = useState<string | null>(null)
+
+  function step(side: 'h' | 'a', delta: number) {
+    if (locked) return
+    const set = side === 'h' ? setH : setA
+    const cur = side === 'h' ? h : a
+    set(Math.min(20, Math.max(0, cur + delta)))
+    setDirty(true)
+    setSavedMsg(false)
+  }
+
+  function pickWiz(p: '1' | 'X' | '2') {
+    if (locked) return
+    setWiz(p)
+    setDirty(true)
+    setSavedMsg(false)
+  }
+
+  async function save() {
+    if (locked || saving) return
+    setSaving(true)
+    setErr(null)
+    const r1 = await savePrediction(fixture.id, h, a)
+    const r2 = wiz ? await saveWizard(fixture.id, wiz, odds ? odds[wiz === '1' ? 0 : wiz === 'X' ? 1 : 2] : null) : { ok: true }
+    setSaving(false)
+    if (r1.ok && r2.ok) {
+      setSavedMsg(true)
+      setDirty(false)
+    } else {
+      setErr(errLabel(r1.error || r2.error))
+    }
+  }
+
+  const statusChip = chipFor(status, Boolean(savedPred), Boolean(savedWiz))
+
+  return (
+    <div className="mb-3 overflow-hidden rounded-[18px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+      <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center gap-[10px] px-4 py-[14px] text-left">
+        <span
+          className="w-[54px] flex-none text-[11px] font-extrabold"
+          style={{ color: status === 'open' && countdown(fixture).includes('perc!') ? '#FF9500' : locked ? 'rgba(13,51,49,0.4)' : '#007E73' }}
+        >
+          {locked ? '🔒' : countdown(fixture)}
+        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-[7px] text-[15px] font-extrabold text-[#0D3331]">
+          <span>{flag(fixture.home)}</span>
+          <span className="truncate">{fixture.home}</span>
+          <span className="text-[#0D3331]/30">–</span>
+          <span className="truncate">{fixture.away}</span>
+          <span>{flag(fixture.away)}</span>
+        </span>
+        {fav && (
+          <span className="rounded-full bg-[#fff3d6] px-[7px] py-[3px] text-[10px] font-black text-[#9a6b00]">⭐×2</span>
+        )}
+        <span className="rounded-full px-[9px] py-1 text-[11px] font-extrabold" style={statusChip.style}>
+          {statusChip.label}
+        </span>
+        <span className="text-[18px] text-[#0D3331]/30" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}>
+          ⌄
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="animate-in px-4 pb-4 pt-1">
+          {/* 🎯 EREDMÉNY-TIPP */}
+          <div className="border-t border-[#EBF6F5] pt-[13px]">
+            <div className="text-[11px] font-black tracking-[0.08em] text-[#007E73]">
+              🎯 EREDMÉNY-TIPP <span className="font-bold text-[#0D3331]/40">· 5/3/2/1 pont · 90 perc</span>
+            </div>
+            {fav && (
+              <div className="mb-[10px] mt-2 rounded-[9px] bg-[#fff3d6] px-[10px] py-[7px] text-[11px] font-bold text-[#9a6b00]">
+                ⭐ Kedvenc csapatod — ezen a meccsen <b>dupla pont</b>, és továbbjutásért <b>+3 bónusz</b>.
+              </div>
+            )}
+            {locked && (
+              <div className="mb-[10px] mt-2 rounded-[9px] bg-[#EBF0F0] px-[10px] py-[7px] text-[11px] font-bold text-[#0D3331]/60">
+                🔒 Lezárva a kezdő sípszókor — a mentett tipped látható.
+              </div>
+            )}
+            <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <span className="text-right text-[13px] font-bold">
+                {fixture.home} {flag(fixture.home)}
+              </span>
+              <div className="flex items-center gap-2">
+                <Stepper value={h} onStep={(d) => step('h', d)} disabled={locked} />
+                <span className="text-[20px] font-black text-[#0D3331]/40">:</span>
+                <Stepper value={a} onStep={(d) => step('a', d)} disabled={locked} />
+              </div>
+              <span className="text-left text-[13px] font-bold">
+                {flag(fixture.away)} {fixture.away}
+              </span>
+            </div>
+          </div>
+
+          {/* 🪄 WIZARD */}
+          <div className="mt-[14px] border-t border-[#EBF6F5] pt-[13px]">
+            <div className="text-[11px] font-black tracking-[0.08em] text-[#007E73]">
+              🪄 WIZARD · 1 / X / 2 <span className="font-bold text-[#0D3331]/40">· odds = pont</span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {(['1', 'X', '2'] as const).map((p, i) => {
+                const on = wiz === p
+                return (
+                  <button
+                    key={p}
+                    onClick={() => pickWiz(p)}
+                    disabled={locked}
+                    className={`rounded-[12px] px-1 py-[10px] text-center ${on ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331]'}`}
+                  >
+                    <div className="text-[11px] font-black">{p}</div>
+                    <div className="tnum mt-px text-[15px] font-black">{odds ? odds[i].toFixed(2) : '—'}</div>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-[9px] text-[11px] font-semibold text-[#0D3331]/55">
+              🔒 leadáskori odds rögzül · zárás a sípszókor · pont az [1,1–10] sávban
+            </div>
+          </div>
+
+          {/* ♟ SVÁJCI */}
+          <div className="mt-[14px] flex gap-[9px] border-t border-[#EBF6F5] pt-[11px]">
+            <span className="text-[11px] font-black tracking-[0.08em] text-[#007E73]">♟ SVÁJCI</span>
+            <span className="flex-1 text-xs text-[#0D3331]/70">
+              A kör 8 meccsének alappontja számít a párbajodban — a részletek a Tabellán.
+            </span>
+          </div>
+
+          {err && <div className="mt-2 text-[12px] font-bold text-[#FF3B30]">{err}</div>}
+
+          <button
+            onClick={save}
+            disabled={locked || saving}
+            className="mt-[14px] w-full rounded-[13px] py-[13px] text-[14px] font-black"
+            style={
+              locked
+                ? { background: '#EBF0F0', color: 'rgba(13,51,49,0.5)' }
+                : savedMsg && !dirty
+                  ? { background: '#e9f6ee', color: '#15803d' }
+                  : { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37', boxShadow: '0 6px 16px rgba(0,184,169,0.28)' }
+            }
+          >
+            {locked ? '🔒 Lezárva a sípszókor' : saving ? 'Mentés…' : savedMsg && !dirty ? '✓ Mentve — mindkét játék' : 'Mentés — eredmény + Wizard'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Stepper({ value, onStep, disabled }: { value: number; onStep: (d: number) => void; disabled: boolean }) {
+  const btn = disabled
+    ? 'h-[26px] w-[44px] rounded-[9px] border border-[#EBF0F0] bg-[#F4F7F7] text-[16px] font-extrabold text-[#0D3331]/30'
+    : 'h-[26px] w-[44px] rounded-[9px] border border-[#DCEFEE] bg-white text-[16px] font-extrabold text-[#007E73]'
+  return (
+    <div className="flex flex-col gap-1">
+      <button onClick={() => onStep(1)} disabled={disabled} className={btn}>
+        +
+      </button>
+      <span className="tnum flex size-[44px] items-center justify-center rounded-[12px] bg-[#EBF6F5] text-[20px] font-black">
+        {value}
+      </span>
+      <button onClick={() => onStep(-1)} disabled={disabled} className={btn}>
+        −
+      </button>
+    </div>
+  )
+}
+
+function chipFor(status: string, hasPred: boolean, hasWiz: boolean) {
+  if (status === 'locked' || status === 'live' || status === 'finished') {
+    if (status === 'live') return { label: '🔴 élő', style: { color: '#fff', background: '#FF3B30' } as const }
+    if (status === 'finished') return { label: '✓ vége', style: { color: '#15803d', background: '#e9f6ee' } as const }
+    return { label: '🔒 lezárva', style: { color: 'rgba(13,51,49,0.55)', background: '#EBF0F0' } as const }
+  }
+  if (hasPred || hasWiz) {
+    const label = hasPred && hasWiz ? '🎯🪄 kész' : hasPred ? '🎯 tipp' : '🪄 wiz'
+    return { label, style: { color: '#15803d', background: '#e9f6ee' } as const }
+  }
+  return { label: 'nincs tipp', style: { color: '#FF9500', background: '#fff4e6' } as const }
+}
+
+function errLabel(error?: string) {
+  if (error === 'match-locked') return 'A meccs lezárult — a tipp már nem menthető.'
+  if (error === 'bad-pin') return 'Hibás PIN — jelentkezz be újra.'
+  if (error === 'auth-not-provisioned') return 'A PIN-ellenőrzés még nincs beállítva (Neon auth tábla).'
+  return 'Mentés sikertelen.'
+}

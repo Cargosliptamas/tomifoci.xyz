@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+
+/* ── BROADCAST design system tokens ──────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  --teal: #00b8a9;
+  --teal-dark: #009b8f;
+  --teal-text: #007e73; /* AA on white — use for teal text/numbers */
+  --grad-start: #00c9ba;
+  --grad-end: #00a99b;
+
+  --bg: #eaf6f5;
+  --card: #ffffff;
+  --surface-2: #ebf6f5;
+  --surface-3: #dcefee;
+
+  --ink: #0d3331;
+  --muted: rgba(13, 51, 49, 0.7);
+  --muted-2: rgba(13, 51, 49, 0.62);
+
+  --me-bg: rgba(20, 160, 140, 0.14);
+  --me-border: #14a08c;
+
+  --gold: #ffd700;
+  --silver: #d6dce3;
+  --bronze: #cd7f32;
+
+  --live: #ff3b30;
+  --ok: #34c759;
+  --ok-text: #15803d;
+  --warn: #ff9500;
+
+  /* admin control-room */
+  --admin-bg: #edf2f2;
+  --admin-card: #ffffff;
+  --admin-border: #e1eaea;
+  --admin-danger: #e5484d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* tabular numbers everywhere numbers matter */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: var(--font-mono), 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.eyebrow {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* Broadcast dark "islands" — white text, used for live/finished cards & infographics */
+.broadcast-dark {
+  background: linear-gradient(160deg, #0c4d49, #0f6a64, #0c524e);
+  color: #fff;
+}
+.broadcast-finished {
+  background: linear-gradient(160deg, #073b43, #0b5560);
+  color: #fff;
+}
+.broadcast-info {
+  background: linear-gradient(160deg, #1d6b74, #14525a);
+  color: #eaf7f6;
+}
+
+/* primary gradient button/bar */
+.btn-primary {
+  background: linear-gradient(160deg, var(--grad-start), var(--grad-end));
+  color: #fff;
+  font-weight: 900;
+  border: none;
+  border-radius: 999px;
+  min-height: 44px;
+  cursor: pointer;
+  transition: filter 140ms ease;
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+.btn-primary:active {
+  filter: brightness(0.96);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* live pulse */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* transform-only entrance (never opacity:0 start, so backgrounded tabs keep content) */
+@keyframes slide-down {
+  from {
+    transform: translateY(-8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-in {
+  animation: slide-down 240ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* hide scrollbars on horizontal chip/scope strips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

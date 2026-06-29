@@ -1,0 +1,45 @@
+import { NextResponse } from 'next/server'
+import { guardWrite } from '@/lib/guard'
+import { saveWizardPickToNeon } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+// Save one Wizard 1/X/2 pick with the odds snapshot at submission (WIZ rule).
+export async function POST(request: Request) {
+  let body: { player?: string; pin?: string; community?: string; matchId?: number; pick?: string; oddsAtPick?: number }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
+  }
+
+  const guard = await guardWrite(body)
+  if (!guard.ok) return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status })
+
+  const pick = body.pick
+  if (pick !== '1' && pick !== 'X' && pick !== '2') {
+    return NextResponse.json({ ok: false, error: 'bad-pick' }, { status: 400 })
+  }
+
+  // Clamp the snapshot odds to [1.10, 10.0] if provided.
+  let oddsAtPick: number | null = null
+  if (body.oddsAtPick != null && Number.isFinite(Number(body.oddsAtPick))) {
+    oddsAtPick = Math.min(10, Math.max(1.1, Number(body.oddsAtPick)))
+  }
+
+  try {
+    await saveWizardPickToNeon({
+      player: guard.player,
+      community: guard.community,
+      matchId: Number(body.matchId),
+      pick,
+      oddsAtPick,
+      oddsSource: oddsAtPick == null ? 'pending' : 'snapshot'
+    })
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown'
+    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+  }
+}
