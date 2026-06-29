@@ -73,10 +73,20 @@ export default function ProfilPage() {
   )
 }
 
+// Mirror of the server SCORE-11 window (CET kickoffs).
+function favPhaseNow(): 'free' | 'once' | 'locked' {
+  const now = Date.now()
+  if (now < Date.UTC(2026, 5, 11, 19, 0, 0)) return 'free'
+  if (now < Date.UTC(2026, 5, 28, 19, 0, 0)) return 'once'
+  return 'locked'
+}
+
 function FavoritePicker({ current, onPick }: { current: string | null; onPick: (team: string) => Promise<{ ok: boolean; error?: string }> }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const phase = favPhaseNow()
+  const locked = phase === 'locked'
 
   async function pick(team: string) {
     setBusy(true)
@@ -87,7 +97,17 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
       setOpen(false)
       setMsg(null)
     } else {
-      setMsg(r.error === 'auth-not-provisioned' ? 'Jelentkezz be újra' : r.error === 'bad-pin' ? 'Hibás PIN' : 'Mentés sikertelen')
+      setMsg(
+        r.error === 'fav-locked'
+          ? 'A kedvenc zárolva a kieséses szakaszban'
+          : r.error === 'switch-used'
+            ? 'Már elhasználtad az egy váltásodat'
+            : r.error === 'auth-not-provisioned'
+              ? 'Jelentkezz be újra'
+              : r.error === 'bad-pin'
+                ? 'Hibás PIN'
+                : 'Mentés sikertelen'
+      )
     }
   }
 
@@ -95,15 +115,23 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
     <div className="mb-[14px] rounded-[16px] bg-white p-4 shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-extrabold">⭐ Kedvenc csapat</span>
-        <button onClick={() => setOpen((v) => !v)} className="text-[12px] font-extrabold text-[#007E73]">
-          {current ? `${current} ${flag(current)}` : 'Válassz'} {open ? '▲' : '▾'}
-        </button>
+        {locked ? (
+          <span className="rounded-full bg-[#EBF0F0] px-2.5 py-1 text-[11px] font-bold text-[#0D3331]/55">🔒 zárolva</span>
+        ) : (
+          <button onClick={() => setOpen((v) => !v)} className="text-[12px] font-extrabold text-[#007E73]">
+            {current ? `${current} ${flag(current)}` : 'Válassz'} {open ? '▲' : '▾'}
+          </button>
+        )}
       </div>
       <p className="mt-1.5 text-xs leading-[1.45] text-[#0D3331]/[0.62]">
-        A kedvenced meccsein dupla pont jár, továbbjutásért +3 bónusz. A csoportkör végéig szabadon válthatsz.
+        {locked
+          ? 'A kieséses szakasz kezdetével a kedvenc véglegesen zárolva. A kedvenced meccsein dupla pont járt, továbbjutásért +3 bónusz.'
+          : phase === 'once'
+            ? 'A kieséses szakaszig még egyszer válthatsz — az új kedvenc a kieséstől kezd duplázni.'
+            : 'A kedvenced meccsein dupla pont jár, továbbjutásért +3 bónusz. A csoportkör végéig szabadon válthatsz.'}
       </p>
       {msg && <div className="mt-2 text-[12px] font-bold text-[#FF3B30]">{msg}</div>}
-      {open && (
+      {open && !locked && (
         <div className="mt-3 grid max-h-[240px] grid-cols-2 gap-1.5 overflow-y-auto">
           {ALL_TEAMS.map((team) => (
             <button
