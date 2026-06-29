@@ -15,6 +15,7 @@ type Section =
   | 'log'
   | 'leads'
   | 'backup'
+  | 'diag'
 
 type ConfirmConfig = {
   title: string
@@ -37,7 +38,8 @@ const NAV: ReadonlyArray<readonly [Section, string, string]> = [
   ['api', '📡', 'LiveScore'],
   ['log', '🧾', 'Napló'],
   ['leads', '📨', 'Érdeklődők'],
-  ['backup', '💾', 'Mentés']
+  ['backup', '💾', 'Mentés'],
+  ['diag', '🔬', 'Diagnosztika']
 ]
 
 const TITLES: Record<Section, readonly [string, string]> = {
@@ -50,7 +52,8 @@ const TITLES: Record<Section, readonly [string, string]> = {
   api: ['Integráció', 'LiveScore & API'],
   log: ['Üzemeltetés', 'Tranzakciós napló'],
   leads: ['Közösség', 'Érdeklődők'],
-  backup: ['Üzemeltetés', 'Mentés & visszaállítás']
+  backup: ['Üzemeltetés', 'Mentés & visszaállítás'],
+  diag: ['Üzemeltetés', 'Diagnosztika & önteszt']
 }
 
 // ── shared helpers ──────────────────────────────────────────────────────────
@@ -233,6 +236,7 @@ export default function AdminPage() {
             {section === 'log' && <LogSection state={state} ask={ask} write={write} showToast={showToast} />}
             {section === 'leads' && <Leads />}
             {section === 'backup' && <Backup ask={ask} write={write} showToast={showToast} />}
+            {section === 'diag' && <Diagnostics token={token} />}
           </div>
         </main>
       </div>
@@ -1112,6 +1116,92 @@ function Status({ label, ok, value }: { label: string; ok: boolean; value: strin
       >
         {value}
       </span>
+    </div>
+  )
+}
+
+// ── Diagnostics / automated self-test ────────────────────────────────────────
+type DiagCheck = { name: string; ok: boolean; detail: string; severity: 'pass' | 'warn' | 'fail' }
+
+function Diagnostics({ token }: { token: string }) {
+  const [checks, setChecks] = useState<DiagCheck[] | null>(null)
+  const [running, setRunning] = useState(false)
+  const [ranAt, setRanAt] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function run() {
+    setRunning(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/admin/diagnostics', { headers: { 'x-admin-token': token }, cache: 'no-store' })
+      const json = await res.json()
+      if (json.checks) {
+        setChecks(json.checks as DiagCheck[])
+        setRanAt(json.ts ?? Date.now())
+      } else {
+        setErr(json.error === 'admin-not-configured' ? 'ADMIN_TOKEN nincs beállítva' : json.error === 'unauthorized' ? 'Hibás token' : json.error ?? 'hiba')
+      }
+    } catch {
+      setErr('network')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const passCount = checks?.filter((c) => c.ok).length ?? 0
+  const total = checks?.length ?? 0
+
+  return (
+    <div className="animate-in">
+      <div className="mb-4 rounded-[12px] border border-[#d3e6e4] bg-[#eef6f6] px-[15px] py-3 text-[13px] text-[#11302E]">
+        🔬 Önteszt — élőben futtatja a rendszer-ellenőrzéseket (adatbázis, írás-egészség, Convex↔Neon szinkron,
+        adatintegritás, származtatott rangsorok, auth). Csak olvasás + egy eldobható szondasor; nem módosít adatot.
+      </div>
+
+      <button
+        onClick={run}
+        disabled={running}
+        className="rounded-[11px] px-5 py-[11px] text-[14px] font-extrabold"
+        style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+      >
+        {running ? 'Tesztek futnak…' : '▶ Önteszt futtatása'}
+      </button>
+
+      {err && <div className="mt-3 text-[13px] font-bold text-[#E5484D]">{err}</div>}
+
+      {checks && (
+        <>
+          <div className="mb-2 mt-5 flex items-center justify-between">
+            <span className="text-xs font-black tracking-[0.08em] text-[#11302E]/55">
+              EREDMÉNY · {passCount}/{total} OK
+            </span>
+            {ranAt && <span className="mono text-[11px] text-[#11302E]/50">{new Date(ranAt).toLocaleTimeString('hu')}</span>}
+          </div>
+          <div className="overflow-hidden rounded-[14px] border border-[#E1EAEA] bg-white">
+            {checks.map((c) => (
+              <div key={c.name} className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0">
+                <span className="text-[16px]">{c.severity === 'pass' ? '✅' : c.severity === 'warn' ? '⚠️' : '❌'}</span>
+                <div className="flex-1">
+                  <div className="text-[13px] font-bold text-[#11302E]">{c.name}</div>
+                  <div className="mono text-[11px] text-[#11302E]/55">{c.detail}</div>
+                </div>
+                <span
+                  className="mono rounded-[7px] px-[9px] py-[3px] text-[11px] font-bold"
+                  style={
+                    c.severity === 'pass'
+                      ? { color: '#15803d', background: '#e4f5ea' }
+                      : c.severity === 'warn'
+                        ? { color: '#92600c', background: '#fff7e6' }
+                        : { color: '#E5484D', background: '#fdeceb' }
+                  }
+                >
+                  {c.severity === 'pass' ? 'OK' : c.severity === 'warn' ? 'FIGYELEM' : 'HIBA'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
