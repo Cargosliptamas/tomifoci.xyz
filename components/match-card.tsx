@@ -9,7 +9,8 @@ import {
   myPrediction,
   myWizard,
   oddsFor,
-  statusOf
+  statusOf,
+  teamsOf
 } from '@/lib/derive'
 
 export function MatchCard({ fixture }: { fixture: Fixture }) {
@@ -20,6 +21,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
   const status = statusOf(state, fixture)
   const locked = status === 'locked'
   const fav = me ? isFavoriteMatch(state, me, fixture) : false
+  const { home, away } = teamsOf(state, fixture)
 
   const savedPred = me ? myPrediction(state, me, fixture.id) : null
   const savedWiz = me ? myWizard(state, me, fixture.id) : null
@@ -76,11 +78,11 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
           {locked ? '🔒' : countdown(fixture)}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-[7px] text-[15px] font-extrabold text-[#0D3331]">
-          <span>{flag(fixture.home)}</span>
-          <span className="truncate">{fixture.home}</span>
+          <span>{flag(home)}</span>
+          <span className="truncate">{home}</span>
           <span className="text-[#0D3331]/30">–</span>
-          <span className="truncate">{fixture.away}</span>
-          <span>{flag(fixture.away)}</span>
+          <span className="truncate">{away}</span>
+          <span>{flag(away)}</span>
         </span>
         {fav && (
           <span className="rounded-full bg-[#fff3d6] px-[7px] py-[3px] text-[10px] font-black text-[#9a6b00]">⭐×2</span>
@@ -112,7 +114,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
             )}
             <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
               <span className="text-right text-[13px] font-bold">
-                {fixture.home} {flag(fixture.home)}
+                {home} {flag(home)}
               </span>
               <div className="flex items-center gap-2">
                 <Stepper value={h} onStep={(d) => step('h', d)} disabled={locked} />
@@ -120,7 +122,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
                 <Stepper value={a} onStep={(d) => step('a', d)} disabled={locked} />
               </div>
               <span className="text-left text-[13px] font-bold">
-                {flag(fixture.away)} {fixture.away}
+                {flag(away)} {away}
               </span>
             </div>
           </div>

@@ -5,7 +5,7 @@ import { useGame } from '@/components/game-provider'
 import { MatchModal } from '@/components/match-modal'
 import { flag, type Fixture } from '@/lib/fixtures'
 import { encodeClientKey } from '@/lib/keys'
-import { myPrediction, myWizard, resultFor } from '@/lib/derive'
+import { myPrediction, myWizard, resultFor, teamsOf } from '@/lib/derive'
 
 function useMatchView(fixture: Fixture) {
   const { state, session } = useGame()
@@ -61,11 +61,13 @@ export function FinishedCard({ fixture }: { fixture: Fixture }) {
 }
 
 function Score({ fixture, h, a, small }: { fixture: Fixture; h?: number; a?: number; small?: boolean }) {
+  const { state } = useGame()
+  const { home, away } = teamsOf(state, fixture)
   return (
     <div className="my-3 grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-white">
       <div className="text-center">
-        <div className={small ? 'text-[26px]' : 'text-[30px]'}>{flag(fixture.home)}</div>
-        <div className="text-[13px] font-bold">{fixture.home}</div>
+        <div className={small ? 'text-[26px]' : 'text-[30px]'}>{flag(home)}</div>
+        <div className="text-[13px] font-bold">{home}</div>
       </div>
       <div className={`tnum ${small ? 'text-[30px]' : 'text-[40px]'} font-black`}>
         {h ?? '–'}
@@ -73,8 +75,8 @@ function Score({ fixture, h, a, small }: { fixture: Fixture; h?: number; a?: num
         {a ?? '–'}
       </div>
       <div className="text-center">
-        <div className={small ? 'text-[26px]' : 'text-[30px]'}>{flag(fixture.away)}</div>
-        <div className="text-[13px] font-bold">{fixture.away}</div>
+        <div className={small ? 'text-[26px]' : 'text-[30px]'}>{flag(away)}</div>
+        <div className="text-[13px] font-bold">{away}</div>
       </div>
     </div>
   )

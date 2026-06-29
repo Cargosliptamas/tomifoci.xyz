@@ -6,6 +6,17 @@ export type MatchStatus = 'finished' | 'live' | 'open' | 'locked'
 
 const MATCH_WINDOW_MS = 2.5 * 60 * 60 * 1000
 
+// Resolve the teams to DISPLAY for a fixture. KO slots carry placeholders ("A2.") in the
+// static schedule; once the bracket is known, koTeams (from the LiveScore poll) holds the
+// real teams — prefer those.
+export function teamsOf(state: GameState | null, fixture: Fixture): { home: string; away: string } {
+  if (fixture.stage === 'ko') {
+    const ko = state?.koTeams?.[String(fixture.id)]
+    if (ko?.home && ko?.away) return { home: ko.home, away: ko.away }
+  }
+  return { home: fixture.home, away: fixture.away }
+}
+
 export function myPrediction(state: GameState | null, player: string, matchId: number) {
   return state?.predictions?.[encodeClientKey(player)]?.[String(matchId)] ?? null
 }

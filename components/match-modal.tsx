@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { flag, type Fixture } from '@/lib/fixtures'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
-import { myPrediction, myWizard, oddsFor, resultFor } from '@/lib/derive'
+import { myPrediction, myWizard, oddsFor, resultFor, teamsOf } from '@/lib/derive'
 
 export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live: boolean; onClose: () => void }) {
   const { state, session } = useGame()
@@ -16,6 +16,7 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
   const wiz = me ? myWizard(state, me, fixture.id) : null
   const odds = oddsFor(state, fixture.id)
   const earned = me ? state?.scores?.[encodeClientKey(me)]?.byMatch?.[String(fixture.id)] : undefined
+  const { home, away } = teamsOf(state, fixture)
 
   return (
     <div
@@ -41,8 +42,8 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
           </div>
           <div className="my-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
             <div className="text-center">
-              <div className="text-[32px]">{flag(fixture.home)}</div>
-              <div className="text-[13px] font-bold">{fixture.home}</div>
+              <div className="text-[32px]">{flag(home)}</div>
+              <div className="text-[13px] font-bold">{home}</div>
             </div>
             <div className="tnum text-[34px] font-black">
               {result?.h ?? '–'}
@@ -50,8 +51,8 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
               {result?.a ?? '–'}
             </div>
             <div className="text-center">
-              <div className="text-[32px]">{flag(fixture.away)}</div>
-              <div className="text-[13px] font-bold">{fixture.away}</div>
+              <div className="text-[32px]">{flag(away)}</div>
+              <div className="text-[13px] font-bold">{away}</div>
             </div>
           </div>
         </div>
