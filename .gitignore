@@ -7,3 +7,6 @@ node_modules
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# local DB backups (contain player data)
+backup-*.json
