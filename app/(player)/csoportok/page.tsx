@@ -13,10 +13,18 @@ export default function CsoportokPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Csoportkör" title="Csoportok" />
-      <div className="mx-auto max-w-[600px] px-[18px] pt-4">
+      <PageHeader eyebrow="Csoportkör & kiesés" title="Csoportok" />
+
+      {/* Knockout bracket first — the group stage is over, the bracket is what's live now */}
+      <div className="pt-4">
+        <div className="mb-2 px-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">🏆 KIESÉSES ÁGRAJZ (VB)</div>
+        <Bracket variant="wc" />
+      </div>
+
+      <div className="mx-auto max-w-[600px] px-[18px] pt-2">
         {status === 'loading' && <div className="py-12 text-center text-[14px] text-[#0D3331]/40">Betöltés…</div>}
 
+        <div className="mb-3 mt-2 text-xs font-black tracking-[0.06em] text-[#0D3331]/55">📊 CSOPORTTÁBLÁK</div>
         <div className="mb-3 text-[11px] font-semibold text-[#0D3331]/50">
           Csoportonként az első 2 továbbjut (🟢) · a 8 legjobb harmadik (🟠) is. 12 csoport · 48 csapat.
         </div>
@@ -80,13 +88,6 @@ export default function CsoportokPage() {
           ))}
           {!thirds.length && <div className="px-4 py-8 text-center text-[13px] text-[#0D3331]/45">Még nincs csoporteredmény.</div>}
         </div>
-      </div>
-
-      <div className="mt-6">
-        <div className="mb-2 px-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
-          🏆 KIESÉSES ÁGRAJZ (VB)
-        </div>
-        <Bracket variant="wc" />
       </div>
     </>
   )

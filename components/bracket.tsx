@@ -310,10 +310,11 @@ export function Bracket({ variant }: { variant: 'parbaj' | 'wc' }) {
   const { state, session } = useGame()
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Center the stage horizontally whenever the data identity changes.
+  // Start scrolled to the LEFT so the populated first round (R32) is visible immediately —
+  // centering on the final left users staring at the empty middle, unsure there's content.
   useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+    if (el) el.scrollLeft = 0
   }, [variant, state])
 
   if (!state) {

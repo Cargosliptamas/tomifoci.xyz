@@ -24,6 +24,9 @@ export default function ParbajPage() {
           </div>
         )}
 
+        {/* Current-round matchups */}
+        {round != null && <Matchups me={me} round={round} pairings={state?.swissPairings ?? []} />}
+
         {status === 'loading' ? (
           <div className="py-12 text-center text-[14px] text-[#0D3331]/40">Betöltés…</div>
         ) : (
@@ -39,5 +42,42 @@ export default function ParbajPage() {
         <Bracket variant="parbaj" />
       </div>
     </>
+  )
+}
+
+function Matchups({
+  me,
+  round,
+  pairings
+}: {
+  me: string
+  round: number
+  pairings: Array<{ round: number; a: string; b: string }>
+}) {
+  const thisRound = pairings.filter((p) => p.round === round)
+  if (!thisRound.length) return null
+  return (
+    <div className="mb-4">
+      <div className="mb-2 text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
+        ⚔️ {round}. FORDULÓ PÁROSÍTÁSAI
+      </div>
+      <div className="overflow-hidden rounded-[14px] bg-white surface-card">
+        {thisRound.map((p, i) => {
+          const mine = p.a === me || p.b === me
+          const isBye = !p.b || p.b === 'bye' || p.b === '—'
+          return (
+            <div
+              key={`${p.a}-${p.b}-${i}`}
+              className="flex items-center gap-2 border-b border-[#EBF6F5] px-4 py-2.5 text-[13px] last:border-b-0"
+              style={mine ? { background: 'rgba(20,160,140,0.1)', borderLeft: '3px solid #14a08c' } : undefined}
+            >
+              <span className={`flex-1 text-right ${p.a === me ? 'font-black text-[#007E73]' : 'font-bold'}`}>{p.a}</span>
+              <span className="px-2 text-[11px] font-black text-[#0D3331]/40">{isBye ? '—' : 'vs'}</span>
+              <span className={`flex-1 ${p.b === me ? 'font-black text-[#007E73]' : 'font-bold'}`}>{isBye ? 'erőnyerő' : p.b}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
