@@ -5,11 +5,14 @@ import { PageHeader } from '@/components/page-header'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
 import { clearSession } from '@/lib/session'
-import { flag } from '@/lib/fixtures'
+import { flag, GROUPS } from '@/lib/fixtures'
+import { useState } from 'react'
+
+const ALL_TEAMS = Array.from(new Set(Object.values(GROUPS).flat())).sort((a, b) => a.localeCompare(b, 'hu'))
 
 export default function ProfilPage() {
   const router = useRouter()
-  const { state, session } = useGame()
+  const { state, session, setFavorite } = useGame()
   const me = session?.player ?? ''
 
   const score = me ? state?.scores?.[encodeClientKey(me)] : undefined
@@ -50,8 +53,9 @@ export default function ProfilPage() {
           </div>
         </div>
 
+        <FavoritePicker current={favTeam ?? null} onPick={setFavorite} />
+
         <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
-          <SettingsRow icon="⭐" label="Kedvenc csapat" value={favTeam ? `${favTeam} ${flag(favTeam)}` : 'nincs'} />
           <SettingsRow icon="🔔" label="Értesítések" value="Kezdés · Eredmény · Bónusz" />
           <SettingsRow icon="🔑" label="PIN módosítása" />
           <SettingsRow icon="🌐" label="Nyelv" value={session?.community === 'en' ? 'English' : 'Magyar'} />
@@ -66,6 +70,57 @@ export default function ProfilPage() {
         </button>
       </div>
     </>
+  )
+}
+
+function FavoritePicker({ current, onPick }: { current: string | null; onPick: (team: string) => Promise<{ ok: boolean; error?: string }> }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function pick(team: string) {
+    setBusy(true)
+    setMsg(null)
+    const r = await onPick(team)
+    setBusy(false)
+    if (r.ok) {
+      setOpen(false)
+      setMsg(null)
+    } else {
+      setMsg(r.error === 'auth-not-provisioned' ? 'Jelentkezz be újra' : r.error === 'bad-pin' ? 'Hibás PIN' : 'Mentés sikertelen')
+    }
+  }
+
+  return (
+    <div className="mb-[14px] rounded-[16px] bg-white p-4 shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-extrabold">⭐ Kedvenc csapat</span>
+        <button onClick={() => setOpen((v) => !v)} className="text-[12px] font-extrabold text-[#007E73]">
+          {current ? `${current} ${flag(current)}` : 'Válassz'} {open ? '▲' : '▾'}
+        </button>
+      </div>
+      <p className="mt-1.5 text-xs leading-[1.45] text-[#0D3331]/[0.62]">
+        A kedvenced meccsein dupla pont jár, továbbjutásért +3 bónusz. A csoportkör végéig szabadon válthatsz.
+      </p>
+      {msg && <div className="mt-2 text-[12px] font-bold text-[#FF3B30]">{msg}</div>}
+      {open && (
+        <div className="mt-3 grid max-h-[240px] grid-cols-2 gap-1.5 overflow-y-auto">
+          {ALL_TEAMS.map((team) => (
+            <button
+              key={team}
+              disabled={busy}
+              onClick={() => pick(team)}
+              className={`flex items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left text-[13px] font-bold ${
+                team === current ? 'border-[#14a08c] bg-[rgba(20,160,140,0.1)]' : 'border-[#DCEFEE] bg-white'
+              }`}
+            >
+              <span>{flag(team)}</span>
+              <span className="truncate">{team}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

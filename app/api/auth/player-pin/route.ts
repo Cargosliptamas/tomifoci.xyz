@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { verifyPlayerPinInNeon } from '@/lib/db'
+import { verifyPlayerPinInNeon, setPlayerPinInNeon } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -22,14 +22,20 @@ export async function POST(request: Request) {
 
   try {
     const result = await verifyPlayerPinInNeon(player, pin, community)
-    if (result.ok) return NextResponse.json({ ok: true })
+    if (result.ok) return NextResponse.json({ ok: true, claimed: false })
 
-    // pin-hashes-empty / player-pin-not-found => auth not provisioned in Neon yet.
-    const notProvisioned = result.reason === 'pin-hashes-empty' || result.reason === 'player-pin-not-found'
-    return NextResponse.json(
-      { ok: false, error: notProvisioned ? 'auth-not-provisioned' : 'bad-pin' },
-      { status: notProvisioned ? 503 : 401 }
-    )
+    // No PIN on file for this player yet (table empty or player missing) →
+    // claim-on-first-login: this PIN becomes their PIN.
+    if (result.reason === 'pin-hashes-empty' || result.reason === 'player-pin-not-found') {
+      const claimed = await setPlayerPinInNeon(player, pin, community)
+      if (claimed) return NextResponse.json({ ok: true, claimed: true })
+      // Race: someone set it between checks — re-verify.
+      const recheck = await verifyPlayerPinInNeon(player, pin, community)
+      if (recheck.ok) return NextResponse.json({ ok: true, claimed: false })
+      return NextResponse.json({ ok: false, error: 'bad-pin' }, { status: 401 })
+    }
+
+    return NextResponse.json({ ok: false, error: 'bad-pin' }, { status: 401 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

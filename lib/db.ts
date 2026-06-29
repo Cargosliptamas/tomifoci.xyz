@@ -69,6 +69,30 @@ export async function verifyPlayerPinInNeon(player: string, pin: string, communi
   return { ok: hash === row.hash, reason: hash === row.hash ? ('ok' as const) : ('bad-pin' as const) }
 }
 
+// True if this player already has a PIN hash in Neon.
+export async function playerHasPin(player: string, community: 'hu' | 'en' = 'hu'): Promise<boolean> {
+  const rows = await getImportedRows('pinHashes')
+  return rows.some((entry) => entry.name === player && (entry.community ?? 'hu') === community && entry.salt && entry.hash)
+}
+
+// Claim-on-first-login: set a player's PIN if they don't have one yet. The original
+// Convex PIN hashes were never migrated to Neon, so a player's first PIN becomes their PIN.
+// Returns false if a PIN already exists (caller should verify instead).
+export async function setPlayerPinInNeon(player: string, pin: string, community: 'hu' | 'en' = 'hu'): Promise<boolean> {
+  if (await playerHasPin(player, community)) return false
+  const salt = crypto.randomUUID().replace(/-/g, '')
+  const hash = await sha256Hex(`${salt}:${pin}`)
+  await upsertImportedRow('pinHashes', `${community}:${player}`, {
+    name: player,
+    community,
+    salt,
+    hash,
+    setAt: Date.now(),
+    source: 'claim-on-first-login'
+  })
+  return true
+}
+
 export async function savePredictionsToNeon(args: {
   player: string
   community: 'hu' | 'en'

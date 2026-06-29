@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '@/components/page-header'
+import { Bracket } from '@/components/bracket'
 
 const RULES = {
   parbaj: {
@@ -45,10 +46,7 @@ export default function BracketsPage() {
           ))}
         </div>
 
-        <div className="mb-4 rounded-[14px] bg-[#fff4e6] px-4 py-3 text-[13px] font-semibold text-[#9a6b00]">
-          Az interaktív ágrajz a 10. forduló utáni befagyasztott kiemelésből épül — a vizuális fa
-          a valós eredmények beérkezésekor jelenik meg. Addig a szabályok láthatók.
-        </div>
+        <Bracket variant={tab} />
 
         <div className="rounded-[18px] p-[18px] text-[#eaf7f6]" style={{ background: 'linear-gradient(160deg,#1d6b74,#14525a)' }}>
           <div className="mb-3 text-xs font-black tracking-[0.08em]">{rules.title}</div>

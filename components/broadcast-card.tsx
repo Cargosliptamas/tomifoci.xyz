@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useGame } from '@/components/game-provider'
+import { MatchModal } from '@/components/match-modal'
 import { flag, type Fixture } from '@/lib/fixtures'
 import { encodeClientKey } from '@/lib/keys'
 import { myPrediction, myWizard, resultFor } from '@/lib/derive'
@@ -17,8 +19,10 @@ function useMatchView(fixture: Fixture) {
 
 export function LiveCard({ fixture }: { fixture: Fixture }) {
   const { result, pred, wiz, earned } = useMatchView(fixture)
+  const [open, setOpen] = useState(false)
   return (
-    <div className="broadcast-dark mb-2 rounded-[18px] p-4 shadow-[0_12px_30px_rgba(12,77,73,0.3)]">
+    <div onClick={() => setOpen(true)} className="broadcast-dark mb-2 cursor-pointer rounded-[18px] p-4 shadow-[0_12px_30px_rgba(12,77,73,0.3)]">
+      {open && <MatchModal fixture={fixture} live onClose={() => setOpen(false)} />}
       <div className="flex items-center justify-between text-[11px] font-extrabold tracking-[0.06em]" style={{ color: '#9fe6dd' }}>
         <span>{fixture.group && fixture.group !== '–' ? fixture.group.toUpperCase() : (fixture.label ?? 'MECCS')}</span>
         <span className="inline-flex items-center gap-[5px]">
@@ -38,8 +42,10 @@ export function LiveCard({ fixture }: { fixture: Fixture }) {
 export function FinishedCard({ fixture }: { fixture: Fixture }) {
   const { result, pred, wiz, earned } = useMatchView(fixture)
   const total = earned ? earned.pts : 0
+  const [open, setOpen] = useState(false)
   return (
-    <div className="broadcast-finished mb-3 rounded-[18px] px-4 py-[14px]">
+    <div onClick={() => setOpen(true)} className="broadcast-finished mb-3 cursor-pointer rounded-[18px] px-4 py-[14px]">
+      {open && <MatchModal fixture={fixture} live={false} onClose={() => setOpen(false)} />}
       <div className="flex items-center justify-between text-[11px] font-extrabold tracking-[0.06em]" style={{ color: '#9fe6dd' }}>
         <span>{fixture.group && fixture.group !== '–' ? fixture.group.toUpperCase() : (fixture.label ?? 'VÉGE')} · VÉGE</span>
         {pred && <span>összesen +{total}</span>}
