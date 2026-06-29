@@ -12,9 +12,14 @@ export const maxDuration = 60
 function authorized(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET
   const adminToken = process.env.ADMIN_TOKEN
-  if (!cronSecret && !adminToken) return true
+  // Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` when CRON_SECRET is set.
   if (cronSecret && request.headers.get('authorization') === `Bearer ${cronSecret}`) return true
+  // Manual admin trigger.
   if (adminToken && request.headers.get('x-admin-token') === adminToken) return true
+  // No CRON_SECRET configured → allow (the scheduled Vercel cron can't send one, and the
+  // poll only writes recomputable cache + merge-upsert results). ADMIN_TOKEN alone must NOT
+  // gate the cron, or the schedule 401s.
+  if (!cronSecret) return true
   return false
 }
 
