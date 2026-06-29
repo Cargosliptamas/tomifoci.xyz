@@ -94,21 +94,26 @@ export default function MeccsCenterPage() {
           </Section>
         )}
 
-        {/* 🏁 BEFEJEZETT */}
+        {/* 🏁 LEGFRISSEBB EREDMÉNYEK — full-width hero for the newest, 2-col for the rest */}
         {buckets.finished.length > 0 && (
           <Section>
-            <Header>🏁 BEFEJEZETT</Header>
-            {buckets.finished.map((f) => (
-              <FinishedCard key={f.id} fixture={f} />
-            ))}
+            <Header>🏁 LEGFRISSEBB EREDMÉNYEK</Header>
+            <FinishedCard fixture={buckets.finished[0]} />
+            {buckets.finished.length > 1 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {buckets.finished.slice(1).map((f) => (
+                  <UpcomingCard key={f.id} fixture={f} />
+                ))}
+              </div>
+            )}
           </Section>
         )}
 
-        {/* ⏳ KÖZELGŐ */}
+        {/* ⏳ KÖZELGŐ — compact 3-col grid */}
         {buckets.upcoming.length > 0 && (
           <Section>
             <Header>⏳ KÖZELGŐ</Header>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {buckets.upcoming.map((f) => (
                 <UpcomingCard key={f.id} fixture={f} />
               ))}
