@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSql } from '@/lib/db'
+import { logTxn } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   }
 
-  let body: { matchId?: number; h?: number; a?: number; action?: 'save' | 'clear' }
+  let body: { matchId?: number; h?: number; a?: number; penH?: number; penA?: number; action?: 'save' | 'clear' }
   try {
     body = await request.json()
   } catch {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
   try {
     if (body.action === 'clear') {
       await sql`DELETE FROM results WHERE match_id = ${matchId}`
+      await logTxn({ type: 'result', label: `Eredmény törölve: #${matchId}`, path: 'results', before: { matchId } })
       return NextResponse.json({ ok: true, cleared: true })
     }
 
@@ -44,12 +46,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'bad-score' }, { status: 400 })
     }
 
+    // Optional knockout penalty shootout score (pen_h/pen_a). Only meaningful for KO
+    // matches; stored as NULL when absent or invalid so the result stays well-formed.
+    const validPen = (v: unknown): number | null => {
+      const n = Number(v)
+      return v != null && Number.isInteger(n) && n >= 0 && n <= 30 ? n : null
+    }
+    const penH = validPen(body.penH)
+    const penA = validPen(body.penA)
+
     // merge-upsert — never delete-all (INV-11)
     await sql`
-      INSERT INTO results (match_id, h, a)
-      VALUES (${matchId}, ${h}, ${a})
-      ON CONFLICT (match_id) DO UPDATE SET h = EXCLUDED.h, a = EXCLUDED.a
+      INSERT INTO results (match_id, h, a, pen_h, pen_a)
+      VALUES (${matchId}, ${h}, ${a}, ${penH}, ${penA})
+      ON CONFLICT (match_id) DO UPDATE SET h = EXCLUDED.h, a = EXCLUDED.a, pen_h = EXCLUDED.pen_h, pen_a = EXCLUDED.pen_a
     `
+    const penNote = penH != null && penA != null ? ` (tizenegyesek ${penH}:${penA})` : ''
+    await logTxn({
+      type: 'result',
+      label: `Eredmény mentve: #${matchId} ${h}:${a}${penNote}`,
+      path: 'results',
+      after: { matchId, h, a, penH, penA }
+    })
     return NextResponse.json({ ok: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'

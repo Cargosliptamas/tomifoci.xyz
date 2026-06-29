@@ -141,10 +141,42 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       }
     }
 
+    // Live in-progress scores: /matches/live.json per competition. Mapped with the
+    // SAME team-pair → id mapping the poll uses. These are NOT written to `results`
+    // (results are full-time truth only, INV-11) — they go to a separate apiCache
+    // 'live' row that player cards read for an in-play score + elapsed minute.
+    const live: Record<number, { h: number; a: number; elapsed: string; status: string }> = {}
+    for (const comp of COMPS) {
+      let data
+      try {
+        data = await ls(key, secret, '/matches/live.json', { competition_id: String(comp) })
+      } catch {
+        continue
+      }
+      for (const m of data?.match ?? data ?? []) {
+        const ref = findId(canon(m.home_translations?.hu || m.home_name), canon(m.away_translations?.hu || m.away_name))
+        if (!ref) continue
+        const sc = parseScore(m.scores?.score ?? m.score ?? m.ft_score)
+        if (!sc) continue
+        const oriented = ref.reversed ? { h: sc.a, a: sc.h } : { h: sc.h, a: sc.a }
+        live[ref.id] = {
+          h: oriented.h,
+          a: oriented.a,
+          elapsed: String(m.time ?? m.elapsed ?? ''),
+          status: String(m.status ?? '')
+        }
+      }
+    }
+
     // Write odds (recomputable cache) + final scores (merge-upsert).
     await sql`
       INSERT INTO imported_rows (table_name, convex_id, payload)
       VALUES ('apiCache', 'odds', ${JSON.stringify({ kind: 'odds', ts: Date.now(), data: oddsMap })}::jsonb)
+      ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
+    `
+    await sql`
+      INSERT INTO imported_rows (table_name, convex_id, payload)
+      VALUES ('apiCache', 'live', ${JSON.stringify({ kind: 'live', ts: Date.now(), data: live })}::jsonb)
       ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
     `
     let resultsWritten = 0

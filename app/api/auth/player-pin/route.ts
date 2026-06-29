@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { verifyPlayerPinInNeon, setPlayerPinInNeon } from '@/lib/db'
+import { checkThrottle, recordAttempt, clearThrottle, throttleKey, ipFromRequest } from '@/lib/throttle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   // Test-login bypass: the single allowlisted automated-test user (e.g. Firecrawl) may log
   // in WITHOUT a PIN. Off by default — only active when TEST_LOGIN_USER env is set to that
   // exact name. A disableable backdoor for crawling/QA, never a generic open door.
+  // NOT throttled — it never participates in the brute-force failure path.
   if (process.env.TEST_LOGIN_USER && player === process.env.TEST_LOGIN_USER) {
     return NextResponse.json({ ok: true, claimed: false, test: true })
   }
@@ -27,22 +29,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
   }
 
+  const key = throttleKey(community, player, ipFromRequest(request))
+
+  // Anti-bruteforce: refuse before verifying if this key is currently locked.
+  const gate = await checkThrottle(key)
+  if (gate.locked) {
+    return NextResponse.json(
+      { ok: false, error: 'too-many-attempts', retryAfterMs: gate.retryAfterMs },
+      { status: 429 }
+    )
+  }
+
   try {
     const result = await verifyPlayerPinInNeon(player, pin, community)
-    if (result.ok) return NextResponse.json({ ok: true, claimed: false })
-
-    // No PIN on file for this player yet (table empty or player missing) →
-    // claim-on-first-login: this PIN becomes their PIN.
-    if (result.reason === 'pin-hashes-empty' || result.reason === 'player-pin-not-found') {
-      const claimed = await setPlayerPinInNeon(player, pin, community)
-      if (claimed) return NextResponse.json({ ok: true, claimed: true })
-      // Race: someone set it between checks — re-verify.
-      const recheck = await verifyPlayerPinInNeon(player, pin, community)
-      if (recheck.ok) return NextResponse.json({ ok: true, claimed: false })
-      return NextResponse.json({ ok: false, error: 'bad-pin' }, { status: 401 })
+    if (result.ok) {
+      await clearThrottle(key)
+      return NextResponse.json({ ok: true, claimed: false })
     }
 
-    return NextResponse.json({ ok: false, error: 'bad-pin' }, { status: 401 })
+    // No PIN on file for this player yet (table empty or player missing) →
+    // claim-on-first-login: this PIN becomes their PIN. NOT a failure — don't throttle.
+    if (result.reason === 'pin-hashes-empty' || result.reason === 'player-pin-not-found') {
+      const claimed = await setPlayerPinInNeon(player, pin, community)
+      if (claimed) {
+        await clearThrottle(key)
+        return NextResponse.json({ ok: true, claimed: true })
+      }
+      // Race: someone set it between checks — re-verify.
+      const recheck = await verifyPlayerPinInNeon(player, pin, community)
+      if (recheck.ok) {
+        await clearThrottle(key)
+        return NextResponse.json({ ok: true, claimed: false })
+      }
+      // The PIN was claimed by someone else and this guess is wrong → real failure.
+      const locked = await recordAttempt(key)
+      return NextResponse.json(
+        { ok: false, error: 'bad-pin', ...(locked.locked ? { retryAfterMs: locked.retryAfterMs } : {}) },
+        { status: 401 }
+      )
+    }
+
+    // Wrong PIN against an existing hash → count the failure.
+    const locked = await recordAttempt(key)
+    return NextResponse.json(
+      { ok: false, error: 'bad-pin', ...(locked.locked ? { retryAfterMs: locked.retryAfterMs } : {}) },
+      { status: 401 }
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

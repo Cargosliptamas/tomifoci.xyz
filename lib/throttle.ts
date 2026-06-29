@@ -1,0 +1,121 @@
+import { getSql, upsertImportedRow } from '@/lib/db'
+
+// Server-side anti-bruteforce throttle for PIN auth, backed by the
+// imported_rows key/value table 'authAttempts' (convex_id = the throttle key).
+//
+// Policy: up to MAX_FAILS failed attempts per rolling WINDOW_MS window per key.
+// On the (MAX_FAILS + 1)th failure within the window the key is locked for
+// LOCK_MS. A successful auth clears the record.
+//
+// Resilience: every store read/write FAILS OPEN — a throttle-store error must
+// never block a legitimate login. We swallow errors and log nothing sensitive.
+
+const TABLE = 'authAttempts'
+const WINDOW_MS = 10 * 60 * 1000 // 10-minute rolling window
+const LOCK_MS = 10 * 60 * 1000 // 10-minute lockout
+const MAX_FAILS = 5 // allow 5 fails; the 6th locks
+
+type AttemptRecord = {
+  key: string
+  fails: number
+  firstFailTs: number
+  lockedUntil: number
+}
+
+export type ThrottleStatus = { locked: boolean; retryAfterMs: number }
+
+// Build a stable throttle key. Player-scoped; optionally narrowed by a coarse IP
+// taken from the x-forwarded-for header so a single IP can't fan out across names.
+export function throttleKey(community: string, player: string, ip?: string | null): string {
+  const base = `${community}:${player}`
+  const cleanIp = (ip ?? '').split(',')[0]?.trim()
+  return cleanIp ? `${base}:${cleanIp}` : base
+}
+
+// Pull the first IP from an x-forwarded-for header on a Request, if present.
+export function ipFromRequest(request: Request): string | null {
+  try {
+    const xff = request.headers.get('x-forwarded-for')
+    if (!xff) return null
+    return xff.split(',')[0]?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function readRecord(key: string): Promise<AttemptRecord | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT payload FROM imported_rows
+    WHERE table_name = ${TABLE} AND convex_id = ${key}
+    LIMIT 1
+  `
+  const payload = rows[0]?.payload as AttemptRecord | undefined
+  return payload ?? null
+}
+
+// Returns whether `key` is currently locked. FAILS OPEN on any store error.
+export async function checkThrottle(key: string): Promise<ThrottleStatus> {
+  try {
+    const rec = await readRecord(key)
+    if (!rec) return { locked: false, retryAfterMs: 0 }
+    const now = Date.now()
+    if (rec.lockedUntil && rec.lockedUntil > now) {
+      return { locked: true, retryAfterMs: rec.lockedUntil - now }
+    }
+    return { locked: false, retryAfterMs: 0 }
+  } catch {
+    // Fail open: never block a login because the throttle store is unavailable.
+    return { locked: false, retryAfterMs: 0 }
+  }
+}
+
+// Record one failed auth attempt for `key`, applying the rolling-window policy.
+// Returns the resulting lock status. FAILS OPEN on any store error.
+export async function recordAttempt(key: string): Promise<ThrottleStatus> {
+  try {
+    const now = Date.now()
+    const existing = await readRecord(key)
+
+    let fails: number
+    let firstFailTs: number
+
+    // Start a fresh window if there's no record, the previous window has expired,
+    // or a prior lock has lapsed.
+    if (
+      !existing ||
+      now - existing.firstFailTs > WINDOW_MS ||
+      (existing.lockedUntil && existing.lockedUntil <= now)
+    ) {
+      fails = 1
+      firstFailTs = now
+    } else {
+      fails = existing.fails + 1
+      firstFailTs = existing.firstFailTs
+    }
+
+    const lockedUntil = fails > MAX_FAILS ? now + LOCK_MS : 0
+
+    const record: AttemptRecord = { key, fails, firstFailTs, lockedUntil }
+    await upsertImportedRow(TABLE, key, record)
+
+    if (lockedUntil > now) return { locked: true, retryAfterMs: lockedUntil - now }
+    return { locked: false, retryAfterMs: 0 }
+  } catch {
+    // Fail open: a failed write must not surface as an auth error.
+    return { locked: false, retryAfterMs: 0 }
+  }
+}
+
+// Clear any throttle record for `key` after a successful auth. FAILS OPEN.
+export async function clearThrottle(key: string): Promise<void> {
+  try {
+    const sql = getSql()
+    await sql`
+      DELETE FROM imported_rows
+      WHERE table_name = ${TABLE} AND convex_id = ${key}
+    `
+  } catch {
+    // Fail open: clearing is best-effort; an expired window will reset anyway.
+  }
+}

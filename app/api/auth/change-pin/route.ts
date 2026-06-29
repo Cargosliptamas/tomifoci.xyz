@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { changePlayerPinInNeon } from '@/lib/db'
+import { checkThrottle, recordAttempt, clearThrottle, throttleKey, ipFromRequest } from '@/lib/throttle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -23,10 +24,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
   }
 
+  const key = throttleKey(community, player, ipFromRequest(request))
+
+  // Anti-bruteforce on the old-PIN check: refuse before verifying if locked.
+  const gate = await checkThrottle(key)
+  if (gate.locked) {
+    return NextResponse.json(
+      { ok: false, error: 'too-many-attempts', retryAfterMs: gate.retryAfterMs },
+      { status: 429 }
+    )
+  }
+
   try {
     const result = await changePlayerPinInNeon(player, oldPin, newPin, community)
-    if (result.ok) return NextResponse.json({ ok: true })
-    return NextResponse.json({ ok: false, error: 'bad-pin' }, { status: 401 })
+    if (result.ok) {
+      await clearThrottle(key)
+      return NextResponse.json({ ok: true })
+    }
+    // Wrong old PIN → count the failure (claim-on-first-login never reaches here).
+    const locked = await recordAttempt(key)
+    return NextResponse.json(
+      { ok: false, error: 'bad-pin', ...(locked.locked ? { retryAfterMs: locked.retryAfterMs } : {}) },
+      { status: 401 }
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

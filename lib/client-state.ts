@@ -171,11 +171,14 @@ function computeLiveWizardRankings(tables: Tables) {
   }
 
   // Odds repair snapshots come from apiCache (kickoffOdds = frozen, odds = live).
+  // The cache stores per-match odds as {h, x, a}, but the engine's OddsSnapshot
+  // expects {home, draw, away} — adapt the shape so the repair chain actually
+  // reads real odds instead of always falling through to the 1.10 floor.
   let kickoffSnapshot: OddsSnapshot = {}
   let oddsCache: OddsSnapshot = {}
   for (const row of tables.apiCache ?? []) {
-    if (row.kind === 'kickoffOdds' && row.data) kickoffSnapshot = row.data as OddsSnapshot
-    else if (row.kind === 'odds' && row.data) oddsCache = row.data as OddsSnapshot
+    if (row.kind === 'kickoffOdds' && row.data) kickoffSnapshot = toOddsSnapshot(row.data)
+    else if (row.kind === 'odds' && row.data) oddsCache = toOddsSnapshot(row.data)
   }
 
   const profiles: WizardProfile[] = (tables.wizardProfiles ?? [])
@@ -250,6 +253,26 @@ function computeLiveSwiss(tables: Tables) {
   const frozen = (SWISS_ROUNDS[9] ?? []).length > 0 && (SWISS_ROUNDS[9] ?? []).every((id) => resultIds.has(id))
 
   return { standings, round, frozen }
+}
+
+// Adapt the live/kickoff odds cache ({matchId: {h, x, a}}) to the engine's
+// OddsSnapshot shape ({matchId: {home, draw, away}}). Tolerant of either field
+// naming so an already-converted snapshot passes through unchanged.
+function toOddsSnapshot(data: unknown): OddsSnapshot {
+  const out: OddsSnapshot = {}
+  if (!data || typeof data !== 'object') return out
+  for (const [matchId, raw] of Object.entries(data as Record<string, any>)) {
+    if (!raw || typeof raw !== 'object') continue
+    const home = Number(raw.home ?? raw.h)
+    const draw = Number(raw.draw ?? raw.x)
+    const away = Number(raw.away ?? raw.a)
+    out[matchId] = {
+      home: Number.isFinite(home) ? home : 0,
+      draw: Number.isFinite(draw) ? draw : 0,
+      away: Number.isFinite(away) ? away : 0
+    }
+  }
+  return out
 }
 
 function mapResults(tables: Tables): Result[] {

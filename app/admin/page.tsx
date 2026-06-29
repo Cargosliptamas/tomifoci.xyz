@@ -96,6 +96,21 @@ function fmtTs(ts: number): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+// ── Transaction log ──────────────────────────────────────────────────────────
+// Admin writes append to the `txnlog` table, surfaced as `state._txnlog`
+// ({[id]: {ts, who, type, label, path}}). GameState doesn't type it, so read it
+// defensively. The legacy `swissLog` is the Swiss-engine audit, NOT admin writes —
+// so the admin Napló + Dashboard feed must read `_txnlog`, sorted newest-first.
+type TxnRow = { ts: number; who?: string; type?: string; label?: string; path?: string }
+
+function txnEntries(state: GameState | null): TxnRow[] {
+  const raw = (state as unknown as { _txnlog?: Record<string, TxnRow> } | null)?._txnlog
+  if (!raw || typeof raw !== 'object') return []
+  return Object.values(raw)
+    .filter((r): r is TxnRow => Boolean(r) && typeof r.ts === 'number')
+    .sort((a, b) => b.ts - a.ts)
+}
+
 // ── page ────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -235,7 +250,14 @@ export default function AdminPage() {
             {section === 'api' && <ApiSection state={state} ask={ask} write={write} showToast={showToast} />}
             {section === 'log' && <LogSection state={state} ask={ask} write={write} showToast={showToast} />}
             {section === 'leads' && <Leads />}
-            {section === 'backup' && <Backup ask={ask} write={write} showToast={showToast} />}
+            {section === 'backup' && (
+              <Backup
+                token={token}
+                ask={ask}
+                showToast={showToast}
+                onApplied={() => void loadState().then(() => showToast('✓ Állapot visszaállítva mentésből · naplózva'))}
+              />
+            )}
             {section === 'diag' && <Diagnostics token={token} />}
           </div>
         </main>
@@ -289,7 +311,7 @@ function Dashboard({ state, onRecompute }: { state: GameState | null; onRecomput
   const predictions = state ? Object.values(state.predictions).reduce((n, m) => n + Object.keys(m).length, 0) : 0
   const results = state ? Object.keys(state.results).length : 0
   const round = state?.swiss?.round
-  const log = state?.swissLog ?? []
+  const log = txnEntries(state)
 
   return (
     <>
@@ -325,7 +347,7 @@ function Dashboard({ state, onRecompute }: { state: GameState | null; onRecomput
               {log.slice(0, 5).map((l, i) => (
                 <div key={i} className="flex items-baseline gap-2.5">
                   <span className="mono whitespace-nowrap text-[10px] text-[#11302E]/45">{fmtTs(l.ts)}</span>
-                  <span className="text-[13px] font-semibold text-[#11302E]">{l.action ?? '—'}</span>
+                  <span className="text-[13px] font-semibold text-[#11302E]">{l.label ?? '—'}</span>
                   {l.who && <span className="text-[11px] text-[#11302E]/40">· {l.who}</span>}
                 </div>
               ))}
@@ -385,7 +407,11 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
               <span className="w-[120px] text-[12px] font-semibold text-[#11302E]/60">{p.leagues?.[0] ?? '—'}</span>
               <span className="flex w-[120px] justify-end gap-1.5">
                 <button
-                  onClick={() => showToast('Backend még nincs bekötve')}
+                  onClick={() => {
+                    const newName = window.prompt(`Új név (jelenlegi: ${p.name})`, p.name)?.trim()
+                    if (!newName || newName === p.name) return
+                    void write('players', { action: 'rename', oldName: p.name, newName }, `✓ Átnevezve — ${p.name} → ${newName} · naplózva`)
+                  }}
                   className="rounded-[8px] border border-[#E1EAEA] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#11302E]"
                 >
                   ✏️
@@ -394,7 +420,7 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
                   onClick={() =>
                     ask({
                       title: 'Játékos törlése?',
-                      body: `„${p.name}” archiválásra kerül és 30 napig visszaállítható. A tippjei és származtatott pontjai eltávolításra kerülnek a rangsorból.`,
+                      body: `„${p.name}” archiválásra kerül és 10 napig visszaállítható. A tippjei és származtatott pontjai eltávolításra kerülnek a rangsorból.`,
                       danger: true,
                       yes: 'Archiválás',
                       onYes: () => void write('players', { action: 'delete', name: p.name }, `✓ Játékos archiválva — ${p.name} · naplózva`)
@@ -411,12 +437,45 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
       </div>
 
       <div className="mb-2.5 text-xs font-black tracking-[0.08em] text-[#11302E]/55">
-        🗄 TÖRÖLT JÁTÉKOSOK <span className="font-bold text-[#11302E]/40">· 30 napos visszaállítási ablak</span>
+        🗄 TÖRÖLT JÁTÉKOSOK <span className="font-bold text-[#11302E]/40">· 10 napos visszaállítási ablak</span>
       </div>
-      <div className="rounded-[16px] border border-[#E1EAEA] bg-white px-4 py-6 text-center text-[13px] text-[#11302E]/50">
-        Nincs törölt játékos.
-      </div>
+      <RestoreDeletedPlayer write={write} />
     </>
+  )
+}
+
+// Deleted players aren't surfaced in the public state, so restore is by name: the
+// admin types the archived name and the players route looks up the snapshot
+// (10-day window) and re-inserts the cascade.
+function RestoreDeletedPlayer({ write }: { write: WriteFn }) {
+  const [name, setName] = useState('')
+  return (
+    <div className="rounded-[16px] border border-[#E1EAEA] bg-white p-4">
+      <div className="mb-2.5 text-[13px] text-[#11302E]/60">
+        Egy archivált játékos visszaállításához add meg a pontos nevét. A visszaállítás csak a 10 napos ablakon belül lehetséges.
+      </div>
+      <div className="flex flex-wrap gap-2.5">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Törölt játékos neve…"
+          className="min-w-[180px] flex-1 rounded-[11px] border border-[#E1EAEA] bg-white px-[14px] py-[11px] text-[14px] outline-none"
+        />
+        <button
+          onClick={() => {
+            const n = name.trim()
+            if (!n) return
+            void write('players', { action: 'restore', name: n }, `✓ Játékos visszaállítva — ${n} · naplózva`)
+            setName('')
+          }}
+          disabled={!name.trim()}
+          className="rounded-[11px] px-[18px] py-[11px] text-[14px] font-extrabold disabled:opacity-50"
+          style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+        >
+          ♻️ Visszaállítás
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -466,8 +525,11 @@ function ResultRow({
 }) {
   const [h, setH] = useState(0)
   const [a, setA] = useState(0)
+  const [penH, setPenH] = useState(0)
+  const [penA, setPenA] = useState(0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const isKo = fixture.id >= 73
 
   async function send(action: 'save' | 'clear') {
     setBusy(true)
@@ -476,7 +538,9 @@ function ResultRow({
       const res = await fetch('/api/admin/result', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-admin-token': token },
-        body: JSON.stringify({ matchId: fixture.id, h, a, action })
+        body: JSON.stringify(
+          isKo ? { matchId: fixture.id, h, a, penH, penA, action } : { matchId: fixture.id, h, a, action }
+        )
       })
       const json = await res.json().catch(() => ({}))
       if (json.ok) onSaved(action === 'clear' ? `✓ Eredmény törölve — #${fixture.id} · naplózva` : `✓ Eredmény mentve — #${fixture.id} · ${h}:${a}`)
@@ -497,6 +561,14 @@ function ResultRow({
         <span className="text-[18px] font-black text-[#11302E]/40">:</span>
         <Step value={a} set={setA} />
       </div>
+      {isKo && (
+        <div className="flex items-center gap-2 rounded-[10px] border border-[#E1EAEA] bg-[#f6faf9] px-2.5 py-1.5">
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#11302E]/45">11-esek</span>
+          <Step value={penH} set={setPenH} />
+          <span className="text-[16px] font-black text-[#11302E]/40">:</span>
+          <Step value={penA} set={setPenA} />
+        </div>
+      )}
       <button
         onClick={() => send('save')}
         disabled={busy}
@@ -700,6 +772,9 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
   const round = state?.swiss?.round ?? 1
   const frozen = state?.swiss?.frozen ?? false
   const pairings = (state?.swissPairings ?? []).filter((p) => p.round === round)
+  const profiles = state?.swissProfiles ?? []
+  const activeProfiles = profiles.filter((p) => p.active !== false && p.removedAtRound == null)
+  const [addName, setAddName] = useState('')
 
   return (
     <>
@@ -746,7 +821,7 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2.5">
+      <div className="mb-4 flex flex-wrap gap-2.5">
         <button
           onClick={() => void write('swiss', { action: 'publish', round }, `✓ ${round}. forduló párosítás publikálva · naplózva`)}
           className="rounded-[12px] px-[22px] py-3 text-[14px] font-black"
@@ -754,6 +829,56 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
         >
           ✓ Párosítás publikálása
         </button>
+      </div>
+
+      <div className="overflow-hidden rounded-[16px] border border-[#E1EAEA] bg-white">
+        <div className="px-4 pb-2 pt-3.5 text-[11px] font-black tracking-[0.06em] text-[#11302E]/45">LIGA TAGOK · {round}. FORDULÓ</div>
+        <div className="flex flex-wrap gap-2.5 px-4 pb-3.5">
+          <input
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Játékos neve…"
+            className="min-w-[160px] flex-1 rounded-[11px] border border-[#E1EAEA] bg-white px-[14px] py-[11px] text-[14px] outline-none"
+          />
+          <button
+            onClick={() => {
+              const n = addName.trim()
+              if (!n) return
+              void write('swiss', { action: 'add', player: n, round }, `✓ Játékos hozzáadva a ligához — ${n} · naplózva`)
+              setAddName('')
+            }}
+            disabled={!addName.trim()}
+            className="rounded-[11px] px-[18px] py-[11px] text-[14px] font-extrabold disabled:opacity-50"
+            style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+          >
+            + Hozzáadás
+          </button>
+        </div>
+        {activeProfiles.length === 0 ? (
+          <div className="border-t border-[#F1F5F5] px-4 py-5 text-center text-[13px] text-[#11302E]/50">
+            {state ? 'Nincs aktív liga tag.' : 'Betöltés…'}
+          </div>
+        ) : (
+          activeProfiles.map((p) => (
+            <div key={p.player} className="flex items-center border-t border-[#F1F5F5] px-4 py-[11px]">
+              <span className="flex-1 text-[14px] font-bold">{p.player}</span>
+              <button
+                onClick={() =>
+                  ask({
+                    title: 'Játékos eltávolítása?',
+                    body: `„${p.player}” kikerül a Svájci ligából a(z) ${round}. fordulótól. Az ellenfelei bye-t kapnak. A művelet naplózásra kerül.`,
+                    danger: true,
+                    yes: 'Eltávolítás',
+                    onYes: () => void write('swiss', { action: 'remove', player: p.player, round }, `✓ Játékos eltávolítva — ${p.player} · naplózva`)
+                  })
+                }
+                className="rounded-[9px] border border-[#f3d2cf] bg-white px-3 py-1.5 text-[12px] font-bold text-[#E5484D]"
+              >
+                Eltávolítás
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </>
   )
@@ -862,17 +987,21 @@ function LogSection({
   write: WriteFn
   showToast: (m: string) => void
 }) {
-  const log = state?.swissLog ?? []
+  const log = txnEntries(state)
 
   function exportCsv() {
     if (log.length === 0) {
       showToast('Nincs exportálható naplóbejegyzés')
       return
     }
-    const header = ['ts', 'who', 'action']
+    const header = ['ts', 'who', 'type', 'label', 'path']
     const lines = [
       header.join(','),
-      ...log.map((l) => [fmtTs(l.ts), l.who ?? '', l.action ?? ''].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      ...log.map((l) =>
+        [fmtTs(l.ts), l.who ?? '', l.type ?? '', l.label ?? '', l.path ?? '']
+          .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+          .join(',')
+      )
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -913,16 +1042,16 @@ function LogSection({
           log.map((l, i) => (
             <div key={i} className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0">
               <span className="mono w-[96px] flex-none text-[11px] text-[#11302E]/45">{fmtTs(l.ts)}</span>
-              <span className="flex-1 text-[13px] font-semibold">{l.action ?? '—'}</span>
+              <span className="flex-1 text-[13px] font-semibold">{l.label ?? '—'}</span>
               <span className="text-[11px] text-[#11302E]/45">{l.who ?? ''}</span>
               <button
                 onClick={() =>
                   ask({
                     title: 'Tranzakció visszagörgetése?',
-                    body: `A(z) „${l.action ?? '—'}” művelet visszavonásra kerül és a pontok újraszámolódnak.`,
+                    body: `A(z) „${l.label ?? '—'}” művelet visszavonásra kerül és a pontok újraszámolódnak.`,
                     danger: true,
                     yes: 'Visszagörgetés',
-                    onYes: () => void write('log', { action: 'rollback', ts: l.ts }, `✓ Visszagörgetve — ${l.action ?? ''} · naplózva`)
+                    onYes: () => void write('log', { action: 'rollback', ts: l.ts }, `✓ Visszagörgetve — ${l.label ?? ''} · naplózva`)
                   })
                 }
                 className="rounded-[9px] border border-[#cfe0de] bg-[#f6faf9] px-3 py-1.5 text-[12px] font-bold text-[#007E73]"
@@ -934,7 +1063,7 @@ function LogSection({
         )}
       </div>
       <div className="mt-2.5 text-[12px] text-[#11302E]/50">
-        A visszagörgetés a backend bekötése után lép életbe; a gomb addig is naplózottan jelez vissza.
+        Csak prediktum-tipp tranzakciók görgethetők vissza; egyéb bejegyzéseknél a backend „nem visszafordítható” választ ad.
       </div>
     </>
   )
@@ -956,16 +1085,54 @@ function Leads() {
 
 // ── BACKUP / RESTORE ────────────────────────────────────────────────────────
 
-function Backup({ ask, write, showToast }: { ask: AskFn; write: WriteFn; showToast: (m: string) => void }) {
-  const [file, setFile] = useState<{ name: string; size: number } | null>(null)
+// Raw restore payload shape (matches the backup route's RawState). The route
+// reads predictions/results/importedRows as arrays; settings is opaque here.
+type RawStateFile = {
+  settings?: unknown
+  predictions?: unknown[]
+  results?: unknown[]
+  importedRows?: unknown[]
+}
+
+function Backup({
+  token,
+  ask,
+  showToast,
+  onApplied
+}: {
+  token: string
+  ask: AskFn
+  showToast: (m: string) => void
+  onApplied: () => void
+}) {
+  const [file, setFile] = useState<{ name: string; size: number; data: RawStateFile } | null>(null)
+  const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const step = file ? 1 : 0
 
+  async function postBackup(body: unknown): Promise<{ ok?: boolean; error?: string; dryRun?: boolean; summary?: any; applied?: any }> {
+    try {
+      const res = await fetch('/api/admin/backup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        body: JSON.stringify(body)
+      })
+      return (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as any
+    } catch {
+      return { ok: false, error: 'network' }
+    }
+  }
+
+  // Export uses the route's `export` action — full raw state (INV-09 redacted),
+  // in the exact shape `restore` re-imports, so export → restore round-trips.
   async function exportState() {
     try {
-      const res = await fetch('/api/state?community=hu', { cache: 'no-store' })
-      const json = await res.json()
-      const payload = json.state ?? json
+      const json = await postBackup({ action: 'export' })
+      if (!json.ok) {
+        showToast(writeErrorMsg(json.error))
+        return
+      }
+      const payload = (json as { state?: unknown }).state ?? json
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -977,6 +1144,53 @@ function Backup({ ask, write, showToast }: { ask: AskFn; write: WriteFn; showToa
     } catch {
       showToast('Az exportálás nem sikerült')
     }
+  }
+
+  async function onPick(f: File) {
+    try {
+      const text = await f.text()
+      const parsed = JSON.parse(text)
+      // Accept either a raw RawState file or the route export wrapper ({ state }).
+      const data = (parsed && typeof parsed === 'object' && 'state' in parsed ? parsed.state : parsed) as RawStateFile
+      setFile({ name: f.name, size: f.size, data })
+    } catch {
+      showToast('Érvénytelen JSON fájl')
+    }
+  }
+
+  // Step 1: dry-run (sends the parsed data, no confirm) → show the diff the route
+  // returns. Step 2: on confirm, apply with confirm:true (merge-upsert, INV-11).
+  async function dryRunThenConfirm() {
+    if (!file) return
+    setBusy(true)
+    const dry = await postBackup({ action: 'restore', data: file.data })
+    setBusy(false)
+    if (!dry.ok) {
+      showToast(writeErrorMsg(dry.error))
+      return
+    }
+    const s = dry.summary ?? {}
+    const part = (label: string, v: any) =>
+      v && typeof v === 'object' ? `${label}: +${v.add ?? 0} új${v.change != null ? `, ${v.change} módosul` : ''}${v.overwrite != null ? `, ${v.overwrite} felülír` : ''} (${v.total ?? 0})` : null
+    const lines = [part('Tippek', s.predictions), part('Eredmények', s.results), part('Sorok', s.importedRows)].filter(Boolean)
+    const body = lines.length
+      ? `Próbafuttatás kész — a megerősítés után a mentés merge-upsert módon íródik be (semmi nem törlődik):\n\n${lines.join('\n')}`
+      : 'A mentés nem tartalmaz visszaállítható adatot (tippek / eredmények / sorok).'
+    ask({
+      title: 'Visszaállítás megerősítése?',
+      body,
+      danger: true,
+      yes: 'Visszaállítás',
+      onYes: async () => {
+        const applied = await postBackup({ action: 'restore', data: file.data, confirm: true })
+        if (applied.ok) {
+          onApplied()
+          setFile(null)
+        } else {
+          showToast(writeErrorMsg(applied.error))
+        }
+      }
+    })
   }
 
   const stepPill = (n: number, label: string, on: boolean) => (
@@ -1025,7 +1239,7 @@ function Backup({ ask, write, showToast }: { ask: AskFn; write: WriteFn; showToa
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) setFile({ name: f.name, size: f.size })
+            if (f) void onPick(f)
           }}
         />
 
@@ -1043,26 +1257,16 @@ function Backup({ ask, write, showToast }: { ask: AskFn; write: WriteFn; showToa
             </div>
             <div className="mb-3.5 text-[13px] text-[#11302E]/70">
               A próbafuttatás összeveti a mentést az élő állapottal — semmi nem íródik felül, amíg meg nem erősíted. A
-              dry-run a backend bekötése után érhető el.
+              visszaállítás merge-upsert: csak hozzáad vagy felülír, sosem töröl (INV-11).
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() =>
-                  ask({
-                    title: 'Visszaállítás megerősítése?',
-                    body: 'A mentés felülírja az élő állapotot. Visszaállítási pont automatikusan készül a felülírás előtt.',
-                    danger: true,
-                    yes: 'Visszaállítás',
-                    onYes: () => {
-                      void write('backup', { action: 'restore', file: file?.name }, '✓ Állapot visszaállítva mentésből · naplózva')
-                      setFile(null)
-                    }
-                  })
-                }
-                className="rounded-[11px] px-5 py-[11px] text-[14px] font-extrabold text-white"
+                onClick={() => void dryRunThenConfirm()}
+                disabled={busy}
+                className="rounded-[11px] px-5 py-[11px] text-[14px] font-extrabold text-white disabled:opacity-60"
                 style={{ background: '#E5484D' }}
               >
-                ▶ Próbafuttatás & visszaállítás
+                {busy ? 'Próbafuttatás…' : '▶ Próbafuttatás & visszaállítás'}
               </button>
               <button
                 onClick={() => setFile(null)}

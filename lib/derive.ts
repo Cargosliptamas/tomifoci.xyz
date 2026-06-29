@@ -62,6 +62,23 @@ export function oddsFor(state: GameState | null, matchId: number): [number, numb
   return null
 }
 
+// Live in-progress score for a match from the apiCache 'live' row, if present.
+// Written by runLiveScorePoll from /matches/live.json (NOT the results table).
+// Returns { h, a, elapsed, status } or null.
+export function liveScoreFor(
+  state: GameState | null,
+  matchId: number
+): { h: number; a: number; elapsed?: string; status?: string } | null {
+  const cache = state?.apiCache?.live?.data as
+    | Record<string, { h?: number; a?: number; elapsed?: string; status?: string }>
+    | undefined
+  const o = cache?.[String(matchId)]
+  if (o && typeof o.h === 'number' && typeof o.a === 'number') {
+    return { h: o.h, a: o.a, elapsed: o.elapsed, status: o.status }
+  }
+  return null
+}
+
 export function isFavoriteMatch(state: GameState | null, player: string, fixture: Fixture): boolean {
   const fav = state?.favorites?.[encodeClientKey(player)]
   if (!fav?.team) return false
