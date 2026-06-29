@@ -14,7 +14,7 @@ import {
 } from '@/lib/derive'
 
 export function MatchCard({ fixture }: { fixture: Fixture }) {
-  const { state, session, savePrediction, saveWizard } = useGame()
+  const { state, session, savePrediction } = useGame()
   const me = session?.player ?? ''
 
   const [expanded, setExpanded] = useState(false)
@@ -29,7 +29,6 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
 
   const [h, setH] = useState(savedPred?.h ?? 0)
   const [a, setA] = useState(savedPred?.a ?? 0)
-  const [wiz, setWiz] = useState<'1' | 'X' | '2' | null>(savedWiz?.pick ?? null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState(Boolean(savedPred))
@@ -44,25 +43,17 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
     setSavedMsg(false)
   }
 
-  function pickWiz(p: '1' | 'X' | '2') {
-    if (locked) return
-    setWiz(p)
-    setDirty(true)
-    setSavedMsg(false)
-  }
-
   async function save() {
     if (locked || saving) return
     setSaving(true)
     setErr(null)
     const r1 = await savePrediction(fixture.id, h, a)
-    const r2 = wiz ? await saveWizard(fixture.id, wiz, odds ? odds[wiz === '1' ? 0 : wiz === 'X' ? 1 : 2] : null) : { ok: true }
     setSaving(false)
-    if (r1.ok && r2.ok) {
+    if (r1.ok) {
       setSavedMsg(true)
       setDirty(false)
     } else {
-      setErr(errLabel(r1.error || r2.error))
+      setErr(errLabel(r1.error))
     }
   }
 
@@ -127,29 +118,31 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
             </div>
           </div>
 
-          {/* 🪄 WIZARD */}
+          {/* 🪄 WIZARD odds (read-only here) — picking 1/X/2 happens on the Wizard tab */}
           <div className="mt-[14px] border-t border-[#EBF6F5] pt-[13px]">
-            <div className="text-[11px] font-black tracking-[0.08em] text-[#007E73]">
-              🪄 WIZARD · 1 / X / 2 <span className="font-bold text-[#0D3331]/40">· odds = pont</span>
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-black tracking-[0.08em] text-[#007E73]">
+                🪄 WIZARD ODDS <span className="font-bold text-[#0D3331]/40">· a tipped 1/X/2-re</span>
+              </div>
+              {savedWiz?.pick && (
+                <span className="rounded-full bg-[#EBF6F5] px-2 py-0.5 text-[10px] font-extrabold text-[#007E73]">
+                  tipped: {savedWiz.pick}
+                </span>
+              )}
             </div>
             <div className="mt-2 grid grid-cols-3 gap-2">
-              {(['1', 'X', '2'] as const).map((p, i) => {
-                const on = wiz === p
-                return (
-                  <button
-                    key={p}
-                    onClick={() => pickWiz(p)}
-                    disabled={locked}
-                    className={`tap rounded-[12px] px-1 py-[10px] text-center ${on ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331] hover:border-[#bfe4df]'}`}
-                  >
-                    <div className="text-[11px] font-black">{p}</div>
-                    <div className="tnum mt-px text-[15px] font-black">{odds ? odds[i].toFixed(2) : '—'}</div>
-                  </button>
-                )
-              })}
+              {(['1', 'X', '2'] as const).map((p, i) => (
+                <div
+                  key={p}
+                  className={`rounded-[12px] px-1 py-[9px] text-center ${savedWiz?.pick === p ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331]'}`}
+                >
+                  <div className="text-[11px] font-black">{p}</div>
+                  <div className="tnum mt-px text-[15px] font-black">{odds ? odds[i].toFixed(2) : '—'}</div>
+                </div>
+              ))}
             </div>
             <div className="mt-[9px] text-[11px] font-semibold text-[#0D3331]/55">
-              🔒 leadáskori odds rögzül · zárás a sípszókor · pont az [1,1–10] sávban
+              A Wizard-tipp alapból a tippedből tükröződik. Felülírni a 🪄 Wizard fülön tudod.
             </div>
           </div>
 
@@ -175,7 +168,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
                   : { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37', boxShadow: '0 6px 16px rgba(0,184,169,0.28)' }
             }
           >
-            {locked ? '🔒 Lezárva a sípszókor' : saving ? 'Mentés…' : savedMsg && !dirty ? '✓ Mentve — mindkét játék' : 'Mentés — eredmény + Wizard'}
+            {locked ? '🔒 Lezárva a sípszókor' : saving ? 'Mentés…' : savedMsg && !dirty ? '✓ Eredmény-tipp mentve' : 'Mentés — eredmény-tipp'}
           </button>
         </div>
       )}

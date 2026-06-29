@@ -44,9 +44,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }
   const community = sessionRef.current?.community ?? 'hu'
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch(`/api/state?community=${community}`, { cache: 'no-store' })
+      const res = await fetch(`/api/state?community=${community}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
       const json = await res.json()
       if (!res.ok || !json.ok) {
         setStatus('error')
@@ -79,7 +79,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         })
         const json = await res.json().catch(() => ({}))
         if (!res.ok || !json.ok) return { ok: false, error: json.error ?? `HTTP ${res.status}` }
-        await refresh()
+        await refresh(true) // bypass the state cache so the just-written change shows now
         return { ok: true }
       } catch {
         return { ok: false, error: 'offline' }

@@ -21,6 +21,28 @@ const TEAM_ALIAS: Record<string, string> = {
 const canon = (n: string) => TEAM_ALIAS[n] || n
 const norm = (s: string) => (s || '').toLowerCase().normalize('NFC').trim()
 
+// live.json gives team names as nested ENGLISH (m.home.name = "Brazil"), not the hu
+// translations fixtures.json carries. Map the WC field to our canonical hu names.
+const EN_HU: Record<string, string> = {
+  Brazil: 'Brazília', Japan: 'Japán', Germany: 'Németország', Paraguay: 'Paraguay',
+  Netherlands: 'Hollandia', Morocco: 'Marokkó', 'Ivory Coast': 'Elefántcsontpart', Norway: 'Norvégia',
+  France: 'Franciaország', Sweden: 'Svédország', Mexico: 'Mexikó', Ecuador: 'Ecuador',
+  England: 'Anglia', 'DR Congo': 'Kongói DK', Belgium: 'Belgium', Senegal: 'Szenegál',
+  USA: 'Egyesült Államok', 'United States': 'Egyesült Államok', 'Bosnia and Herzegovina': 'Bosznia-Hercegovina',
+  Spain: 'Spanyolország', Austria: 'Ausztria', Portugal: 'Portugália', Croatia: 'Horvátország',
+  Switzerland: 'Svájc', Algeria: 'Algéria', Australia: 'Ausztrália', Egypt: 'Egyiptom',
+  Argentina: 'Argentína', 'Cape Verde': 'Zöld-foki-szigetek', Colombia: 'Kolumbia', Ghana: 'Ghána',
+  'South Africa': 'Dél-Afrika', Canada: 'Kanada', 'South Korea': 'Dél-Korea', Qatar: 'Katar',
+  Uruguay: 'Uruguay', Tunisia: 'Tunézia', Iran: 'Irán', Iraq: 'Irak', Jordan: 'Jordánia',
+  Uzbekistan: 'Üzbegisztán', Panama: 'Panama', Haiti: 'Haiti', Scotland: 'Skócia',
+  Curacao: 'Curacao', 'New Zealand': 'Új-Zéland', 'Saudi Arabia': 'Szaúd-Arábia'
+}
+// Pull a hu team name from a live.json side ({name} nested English) or a fixtures.json side.
+function teamNameOf(side: any, flat?: string): string {
+  const raw = side?.translations?.hu || side?.name || flat || ''
+  return canon(EN_HU[raw] || raw)
+}
+
 type Ref = { id: number; reversed: boolean }
 
 export type PollSummary = {
@@ -154,7 +176,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         continue
       }
       for (const m of data?.match ?? data ?? []) {
-        const ref = findId(canon(m.home_translations?.hu || m.home_name), canon(m.away_translations?.hu || m.away_name))
+        const ref = findId(teamNameOf(m.home, m.home_name), teamNameOf(m.away, m.away_name))
         if (!ref) continue
         const sc = parseScore(m.scores?.score ?? m.score ?? m.ft_score)
         if (!sc) continue

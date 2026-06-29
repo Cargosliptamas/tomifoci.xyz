@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { flag, type Fixture } from '@/lib/fixtures'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
@@ -61,7 +62,11 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
   const earned = me ? state?.scores?.[encodeClientKey(me)]?.byMatch?.[String(fixture.id)] : undefined
   const { home, away } = teamsOf(state, fixture)
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  // Portal to <body> so the modal is NOT a DOM child of the clickable match card —
+  // otherwise backdrop clicks bubble back to the card's open handler (the strobe bug).
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center bg-[rgba(8,54,60,0.55)] backdrop-blur-[3px]"
       onClick={onClose}
@@ -188,7 +193,8 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
