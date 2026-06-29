@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:drift": "node scripts/check-convex-drift.mjs",
+    "check:write": "node scripts/check-write-health.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

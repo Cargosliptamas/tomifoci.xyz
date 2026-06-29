@@ -1,0 +1,79 @@
+name: DB health
+
+# Continuously verifies the Neon backend:
+#  - write-health: results are writeable (insert → read-back → upsert → delete a sentinel)
+#  - convex-drift: any data on the still-live Convex classic game missing/different in Neon
+#  - unit tests: game:state builder invariants (secret stripping, shape)
+#
+# Required repository secrets:
+#  - DATABASE_URL  (Neon connection string)
+#  - CONVEX_URL    (optional; defaults to the known deployment)
+
+on:
+  schedule:
+    - cron: '17 * * * *' # hourly, at :17
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'lib/**'
+      - 'db/**'
+      - 'test/**'
+      - '.github/workflows/db-health.yml'
+
+concurrency:
+  group: db-health
+  cancel-in-progress: false
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  write-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Neon write-health
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/check-write-health.mjs
+
+  convex-drift:
+    # This job is INFORMATIONAL: it goes red whenever Convex has data not yet in Neon,
+    # which is the signal to re-run the migration. It does not block anything.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Convex → Neon drift
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: node scripts/check-convex-drift.mjs | tee "$GITHUB_STEP_SUMMARY"
