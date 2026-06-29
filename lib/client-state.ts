@@ -2,6 +2,19 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { encodeClientKey } from './keys'
+import { computeWizardScores, computeWizardRankings, repairOdds, pickFromScore } from './engine/wizard'
+import { computeSwiss } from './engine/swiss'
+import { SWISS_ROUNDS } from './engine/match-meta'
+import type {
+  OddsSnapshot,
+  Pick1X2,
+  Prediction,
+  Result,
+  SwissPairing,
+  SwissProfile,
+  WizardPick,
+  WizardProfile,
+} from './engine/types'
 
 type Row = Record<string, any>
 type Tables = Record<string, Row[] | undefined>
@@ -57,10 +70,10 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
       { pick: row.pick, oddsAtPick: row.oddsAtPick }
     ]),
     wizardProfiles: mapEncodedRows(tables.wizardProfiles, (row) => [row.player, { active: row.active, mirror: row.mirror }]),
-    wizardRankings: first(tables.wizardRankings)?.rows ?? [],
+    wizardRankings: computeLiveWizardRankings(tables),
     swissProfiles: isEnglish ? [] : (tables.swissProfiles ?? []).map((row) => pick(row, ['player', 'active', 'joinedRound', 'removedAtRound'])),
     swissPairings: isEnglish ? [] : (tables.swissPairings ?? []).map((row) => pick(row, ['round', 'a', 'b', 'tier', 'slot', 'publishedBy'])),
-    swiss: isEnglish ? null : first(tables.swissStandings)?.data ?? null,
+    swiss: isEnglish ? null : computeLiveSwiss(tables),
     swissLog: isEnglish ? [] : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note']))
   }
 }
@@ -94,6 +107,159 @@ function computeDerivedRows(tables: Tables) {
     playerScores,
     rankings: rankCommunities(settings, playerScores)
   }
+}
+
+// ── Live Wizard of ODDS ranking (engine-backed) ─────────────────────────────
+// Replaces the frozen wizardRankings snapshot. Scores are computed every read
+// from picks + results via the spec-faithful engine (repairOdds →
+// computeWizardScores → computeWizardRankings). Mirror ("Varázslótanonc")
+// players get a derived 1/X/2 pick from their score prediction for any WC match
+// they predicted but have no explicit pick for.
+function computeLiveWizardRankings(tables: Tables) {
+  const settings = first(tables.settings)
+  const players: Row[] = settings?.players ?? []
+
+  const results: Result[] = mapResults(tables)
+
+  const profileByPlayer = new Map<string, { active: boolean; mirror: boolean }>()
+  for (const row of tables.wizardProfiles ?? []) {
+    if (!row.player) continue
+    profileByPlayer.set(row.player, { active: row.active !== false, mirror: row.mirror !== false })
+  }
+
+  // Stored picks (HU only). These already carry oddsAtPick from pick time.
+  const stored: WizardPick[] = []
+  const storedKey = new Set<string>()
+  for (const row of tables.wizardPicks ?? []) {
+    if ((row.community ?? 'hu') !== 'hu') continue
+    if (!row.player || row.matchId == null || !row.pick) continue
+    const matchId = Number(row.matchId)
+    stored.push({
+      player: row.player,
+      matchId,
+      pick: row.pick as Pick1X2,
+      oddsAtPick: Number(row.oddsAtPick ?? 0) || 0,
+      oddsSource: row.oddsSource,
+      lockedAt: row.lockedAt,
+    })
+    storedKey.add(`${row.player}|${matchId}`)
+  }
+
+  // Mirror gap-fill: derive picks from HU predictions for mirror-on players.
+  const predsByPlayer = new Map<string, Map<number, { h: number; a: number }>>()
+  for (const row of tables.predictions ?? []) {
+    if ((row.community ?? 'hu') !== 'hu') continue
+    const matchId = Number(row.matchId)
+    if (!predsByPlayer.has(row.player)) predsByPlayer.set(row.player, new Map())
+    predsByPlayer.get(row.player)!.set(matchId, { h: Number(row.h), a: Number(row.a) })
+  }
+  const mirrored: WizardPick[] = []
+  for (const player of players) {
+    const name = player.name
+    if (!name) continue
+    const prof = profileByPlayer.get(name)
+    const active = prof ? prof.active : true
+    const mirror = prof ? prof.mirror : true
+    if (!active || !mirror) continue
+    const preds = predsByPlayer.get(name)
+    if (!preds) continue
+    for (const [matchId, p] of preds) {
+      if (matchId >= 999) continue // WC-only league (WIZ-07)
+      if (storedKey.has(`${name}|${matchId}`)) continue
+      mirrored.push({ player: name, matchId, pick: pickFromScore(p.h, p.a), oddsAtPick: 0, lockedAt: 0 })
+    }
+  }
+
+  // Odds repair snapshots come from apiCache (kickoffOdds = frozen, odds = live).
+  let kickoffSnapshot: OddsSnapshot = {}
+  let oddsCache: OddsSnapshot = {}
+  for (const row of tables.apiCache ?? []) {
+    if (row.kind === 'kickoffOdds' && row.data) kickoffSnapshot = row.data as OddsSnapshot
+    else if (row.kind === 'odds' && row.data) oddsCache = row.data as OddsSnapshot
+  }
+
+  const profiles: WizardProfile[] = (tables.wizardProfiles ?? [])
+    .filter((row) => row.player)
+    .map((row) => ({ player: row.player, active: row.active !== false, mirror: row.mirror !== false }))
+
+  const repaired = repairOdds([...stored, ...mirrored], results, kickoffSnapshot, oddsCache)
+  const scores = computeWizardScores(repaired, results, profiles)
+  const ranking = computeWizardRankings(scores, profiles)
+
+  return ranking.map((r, i) => ({
+    name: r.name,
+    place: i + 1,
+    pts: r.pts,
+    accuracy: r.accuracy,
+    played: r.played,
+  }))
+}
+
+// ── Live Swiss / Párbaj standings (engine-backed) ───────────────────────────
+// Replaces the frozen swissStandings snapshot. computeSwiss derives match points,
+// records, predicted-points and Buchholz from the authoritative swissProfiles +
+// swissPairings + predictions + results inputs on every read.
+function computeLiveSwiss(tables: Tables) {
+  const profiles: SwissProfile[] = (tables.swissProfiles ?? [])
+    .filter((row) => row.player)
+    .map((row) => ({
+      player: row.player,
+      active: row.active !== false,
+      joinedRound: row.joinedRound,
+      removedAtRound: row.removedAtRound ?? null,
+    }))
+
+  const pairings: SwissPairing[] = (tables.swissPairings ?? [])
+    .filter((row) => row.round != null && row.a)
+    .map((row) => ({
+      round: Number(row.round),
+      a: row.a,
+      b: row.b ?? null,
+      tier: row.tier ?? undefined,
+      slot: row.slot ?? undefined,
+    }))
+
+  const predictions: Prediction[] = (tables.predictions ?? [])
+    .filter((row) => (row.community ?? 'hu') === 'hu')
+    .map((row) => ({ player: row.player, matchId: Number(row.matchId), h: Number(row.h), a: Number(row.a), community: 'hu' }))
+
+  const results = mapResults(tables)
+  const out = computeSwiss(profiles, pairings, predictions, results)
+
+  const standings = out.standings.map((s) => ({
+    name: s.name,
+    mp: s.mp,
+    w: s.w,
+    d: s.d,
+    l: s.l,
+    place: s.place,
+    predPts: s.base,
+    buchholz: s.bh,
+  }))
+
+  // Current round = first round with an unfinished match, else 13.
+  const resultIds = new Set(results.map((r) => r.matchId))
+  let round = 13
+  for (let r = 1; r <= 13; r++) {
+    if ((SWISS_ROUNDS[r - 1] ?? []).some((id) => !resultIds.has(id))) {
+      round = r
+      break
+    }
+  }
+  // Standings freeze once round 10 (SWISS_ROUNDS index 9) is fully resulted.
+  const frozen = (SWISS_ROUNDS[9] ?? []).length > 0 && (SWISS_ROUNDS[9] ?? []).every((id) => resultIds.has(id))
+
+  return { standings, round, frozen }
+}
+
+function mapResults(tables: Tables): Result[] {
+  const out: Result[] = []
+  for (const row of tables.results ?? []) {
+    const matchId = Number(row.matchId)
+    if (!Number.isInteger(matchId)) continue
+    out.push({ matchId, h: Number(row.h), a: Number(row.a), pen_h: row.pen_h, pen_a: row.pen_a })
+  }
+  return out
 }
 
 type MatchMeta = { id: number; stage: 'group' | 'ko' | 'test'; home: string; away: string }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildPublicState } from '../lib/client-state'
+import { SWISS_ROUNDS } from '../lib/engine/match-meta'
 
 // INV-09: secrets must never appear in the public game:state payload.
 describe('buildPublicState — secret stripping (INV-09)', () => {
@@ -42,5 +43,85 @@ describe('buildPublicState — secret stripping (INV-09)', () => {
     for (const key of ['settings', 'predictions', 'results', 'favorites', 'scores', 'rankings', 'wizardPicks']) {
       expect(state).toHaveProperty(key)
     }
+  })
+})
+
+// Wizard of ODDS must SCORE LIVE from the engine, not from a frozen snapshot.
+describe('buildPublicState — live Wizard of ODDS ranking', () => {
+  const tables = {
+    settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }, { name: 'Béla' }, { name: 'Cili' }] }],
+    predictions: [
+      // mirror-derived picks (no wizardProfiles → default active+mirror)
+      { player: 'Anna', matchId: 1, h: 2, a: 0, community: 'hu' }, // pick '1'
+      { player: 'Anna', matchId: 3, h: 0, a: 0, community: 'hu' }, // pick 'X'
+      { player: 'Béla', matchId: 1, h: 0, a: 1, community: 'hu' }, // pick '2'
+      { player: 'Cili', matchId: 1, h: 1, a: 0, community: 'hu' }, // pick '1'
+    ],
+    results: [
+      { matchId: 1, h: 2, a: 0 }, // actual '1'
+      { matchId: 3, h: 0, a: 0 }, // actual 'X'
+    ],
+    // odds repair source for the mirror picks (oddsAtPick starts at 0)
+    apiCache: [
+      {
+        kind: 'kickoffOdds',
+        ts: 1,
+        data: {
+          '1': { home: 1.8, draw: 3.5, away: 4.2 },
+          '3': { home: 2.0, draw: 3.0, away: 3.5 },
+        },
+      },
+    ],
+  }
+
+  it('computes pts, accuracy and place from picks + results', () => {
+    const state = buildPublicState(tables, { community: 'hu' })
+    const rows = state.wizardRankings
+    expect(rows.length).toBe(3)
+
+    // Anna: match1 '1' (1.80) + match3 'X' (3.00) = 4.80, both correct
+    expect(rows[0]).toMatchObject({ name: 'Anna', place: 1, played: 2, accuracy: 100 })
+    expect(rows[0].pts).toBeCloseTo(4.8, 5)
+    // Cili: match1 '1' correct (1.80)
+    expect(rows[1]).toMatchObject({ name: 'Cili', place: 2, played: 1, accuracy: 100 })
+    expect(rows[1].pts).toBeCloseTo(1.8, 5)
+    // Béla: match1 '2' wrong → 0 pts
+    expect(rows[2]).toMatchObject({ name: 'Béla', place: 3, played: 1, accuracy: 0, pts: 0 })
+  })
+})
+
+// Swiss / Párbaj standings must be derived live from pairings + predictions + results.
+describe('buildPublicState — live Swiss / Párbaj standings', () => {
+  const round1 = SWISS_ROUNDS[0]
+  const tables = {
+    settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }, { name: 'Béla' }] }],
+    predictions: [
+      ...round1.map((matchId) => ({ player: 'Anna', matchId, h: 1, a: 0, community: 'hu' })), // 5 pts each
+      ...round1.map((matchId) => ({ player: 'Béla', matchId, h: 0, a: 0, community: 'hu' })), // 0 pts each
+    ],
+    results: round1.map((matchId) => ({ matchId, h: 1, a: 0 })),
+    swissProfiles: [
+      { player: 'Anna', active: true },
+      { player: 'Béla', active: true },
+    ],
+    swissPairings: [{ round: 1, a: 'Anna', b: 'Béla' }],
+  }
+
+  it('derives match points, records, predicted points and Buchholz', () => {
+    const state = buildPublicState(tables, { community: 'hu' })
+    expect(state.swiss).not.toBeNull()
+    const standings = state.swiss!.standings
+    expect(standings.length).toBe(2)
+
+    // Anna swept round 1 (8×5 = 40 base pts) → wins the matchup (3 mp)
+    expect(standings[0]).toMatchObject({ name: 'Anna', place: 1, mp: 3, w: 1, d: 0, l: 0, predPts: 40 })
+    expect(standings[0].buchholz).toBe(0) // sole opponent Béla has 0 mp
+    // Béla predicted but lost the matchup
+    expect(standings[1]).toMatchObject({ name: 'Béla', place: 2, mp: 0, w: 0, l: 1, predPts: 0 })
+    expect(standings[1].buchholz).toBe(3) // sole opponent Anna has 3 mp
+
+    // Round 1 fully resulted → current round advances to 2; not frozen (R10 unfinished)
+    expect(state.swiss!.round).toBe(2)
+    expect(state.swiss!.frozen).toBe(false)
   })
 })

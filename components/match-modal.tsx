@@ -1,15 +1,58 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { flag, type Fixture } from '@/lib/fixtures'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
 import { myPrediction, myWizard, oddsFor, resultFor, teamsOf } from '@/lib/derive'
 
+type MatchEvent = { minute: string; type: string; player: string; team: 'h' | 'a' }
+type LineupPlayer = { num: string; name: string }
+type MatchCentre = {
+  events: MatchEvent[]
+  lineups: { home: LineupPlayer[]; away: LineupPlayer[] } | null
+}
+
+// type → icon for the events list (mirrors the classic render-matchcentre.js icons).
+const EVENT_ICON: Record<string, string> = {
+  goal: '⚽',
+  goal_penalty: '⚽',
+  own_goal: '⚽',
+  yellow: '🟨',
+  red: '🟥',
+  yellow_red: '🟨🟥',
+  sub: '🔄',
+  missed_penalty: '✗'
+}
+const EVENT_SUFFIX: Record<string, string> = { goal_penalty: ' (11m)', own_goal: ' (ög)', missed_penalty: ' (11m)' }
+
 export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live: boolean; onClose: () => void }) {
   const { state, session } = useGame()
   const me = session?.player ?? ''
-  const [tab, setTab] = useState<'sum' | 'odds'>('sum')
+  const [tab, setTab] = useState<'sum' | 'ev' | 'lu' | 'odds'>('sum')
+  const [mc, setMc] = useState<MatchCentre | null>(null)
+  const [mcLoading, setMcLoading] = useState(true)
+
+  // Fetch live match-centre data (events + lineups) once, when the modal opens.
+  useEffect(() => {
+    let alive = true
+    setMcLoading(true)
+    fetch(`/api/match/${fixture.id}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!alive) return
+        setMc({ events: json.events ?? [], lineups: json.lineups ?? null })
+      })
+      .catch(() => {
+        if (alive) setMc({ events: [], lineups: null })
+      })
+      .finally(() => {
+        if (alive) setMcLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [fixture.id])
 
   const result = resultFor(state, fixture.id)
   const pred = me ? myPrediction(state, me, fixture.id) : null
@@ -58,30 +101,77 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
         </div>
 
         <div className="flex gap-1.5 border-b border-[#EBF6F5] px-4 py-3">
-          {(['sum', 'odds'] as const).map((id) => (
+          {([
+            ['sum', 'Összefoglaló'],
+            ['ev', 'Események'],
+            ['lu', 'Felállás'],
+            ['odds', 'Odds']
+          ] as const).map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex-1 rounded-[10px] px-1 py-[9px] text-[13px] font-extrabold ${
+              className={`flex-1 rounded-[10px] px-1 py-[9px] text-[12px] font-extrabold ${
                 tab === id ? 'bg-[#EBF6F5] text-[#007E73]' : 'text-[#0D3331]/55'
               }`}
             >
-              {id === 'sum' ? 'Összefoglaló' : 'Odds'}
+              {label}
             </button>
           ))}
         </div>
 
         <div className="px-4 pb-7 pt-3">
-          {tab === 'sum' ? (
+          {tab === 'sum' && (
             <div className="space-y-2">
               <SumRow label="🎯 Eredmény-tipped" value={pred ? `${pred.h}:${pred.a}` : 'nincs tipp'} bold={earned ? `${earned.pts} pt` : undefined} />
               <SumRow label="🪄 Wizard tipped" value={wiz?.pick ?? 'nincs'} bold={wiz?.oddsAtPick ? wiz.oddsAtPick.toFixed(2) : undefined} />
               <SumRow label="♟ Svájci" value="a kör párbajában számít" />
-              <div className="pt-2 text-[11px] font-semibold text-[#0D3331]/50">
-                Élő esemény- és felállásadatok akkor jelennek meg, ha a LiveScore poll friss adatot ad.
-              </div>
             </div>
-          ) : (
+          )}
+
+          {tab === 'ev' && (
+            mcLoading ? (
+              <Loading />
+            ) : mc && mc.events.length > 0 ? (
+              <div className="space-y-1.5">
+                {mc.events.map((e, i) => (
+                  <div key={i} className="flex items-center text-[13px] font-bold">
+                    {e.team === 'h' ? (
+                      <span className="flex items-center gap-1.5 text-[#0D3331]">
+                        <span>{EVENT_ICON[e.type] ?? '•'}</span>
+                        <span>{e.player}</span>
+                        {EVENT_SUFFIX[e.type] && <span className="text-[#0D3331]/50">{EVENT_SUFFIX[e.type]}</span>}
+                        <span className="tnum text-[#0D3331]/45">{e.minute}'</span>
+                      </span>
+                    ) : (
+                      <span className="ml-auto flex items-center gap-1.5 text-right text-[#0D3331]">
+                        <span className="tnum text-[#0D3331]/45">{e.minute}'</span>
+                        {EVENT_SUFFIX[e.type] && <span className="text-[#0D3331]/50">{EVENT_SUFFIX[e.type]}</span>}
+                        <span>{e.player}</span>
+                        <span>{EVENT_ICON[e.type] ?? '•'}</span>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty>Még nincs élő esemény</Empty>
+            )
+          )}
+
+          {tab === 'lu' && (
+            mcLoading ? (
+              <Loading />
+            ) : mc?.lineups && (mc.lineups.home.length > 0 || mc.lineups.away.length > 0) ? (
+              <div className="grid grid-cols-2 gap-3 text-[12px]">
+                <LineupCol team={home} players={mc.lineups.home} />
+                <LineupCol team={away} players={mc.lineups.away} align="right" />
+              </div>
+            ) : (
+              <Empty>Még nincs felállás</Empty>
+            )
+          )}
+
+          {tab === 'odds' && (
             <>
               <div className="grid grid-cols-3 gap-2">
                 {(['1 · hazai', 'X · döntetlen', '2 · vendég'] as const).map((label, i) => (
@@ -110,6 +200,41 @@ function SumRow({ label, value, bold }: { label: string; value: string; bold?: s
         {value}
         {bold && <b className="ml-2 text-[#007E73]">{bold}</b>}
       </span>
+    </div>
+  )
+}
+
+function Loading() {
+  return <div className="py-6 text-center text-[12px] font-semibold text-[#0D3331]/45">Betöltés…</div>
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="py-6 text-center text-[12px] font-semibold text-[#0D3331]/45">{children}</div>
+}
+
+function LineupCol({ team, players, align }: { team: string; players: LineupPlayer[]; align?: 'right' }) {
+  return (
+    <div className={align === 'right' ? 'text-right' : ''}>
+      <div className="mb-1.5 text-[12px] font-extrabold text-[#0D3331]">
+        {align === 'right' ? `${team} ${flag(team)}` : `${flag(team)} ${team}`}
+      </div>
+      {players.length === 0 ? (
+        <div className="text-[#0D3331]/40">–</div>
+      ) : (
+        players.map((p, i) => (
+          <div key={i} className="py-[2px] font-semibold leading-snug text-[#0D3331]/80">
+            {align === 'right' ? (
+              <>
+                {p.name} <span className="tnum text-[#0D3331]/40">{p.num}</span>
+              </>
+            ) : (
+              <>
+                <span className="tnum text-[#0D3331]/40">{p.num}</span> {p.name}
+              </>
+            )}
+          </div>
+        ))
+      )}
     </div>
   )
 }

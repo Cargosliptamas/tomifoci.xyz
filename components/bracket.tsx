@@ -1,86 +1,59 @@
 'use client'
 
 import { useEffect, useRef, type CSSProperties } from 'react'
+import { useGame } from '@/components/game-provider'
+import { flag } from '@/lib/fixtures'
+import { encodeClientKey } from '@/lib/keys'
+import type { GameState, SwissStanding } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
-// Converging "March Madness" knockout bracket (ágrajz).
+// Converging "March Madness" knockout bracket (ágrajz) — LIVE DATA.
 // Geometry ported faithfully from the design handoff
 // (design_handoff_vbtippjatek_redesign/Tomifoci 2026 - Brackets.dc.html).
 // Two sides converge on a center final: left fills L->R, right mirrored R->L.
+//
+// WC variant  — fed from state.koTeams (real teams per KO slot 73-104) and
+//               state.results (scores). R32 = slots 73-88, R16 = 89-96,
+//               QF = 97-100, SF = 101-102, final = 104.
+// Párbaj variant — seeded from state.swiss.standings (top-32 playoff seeding).
+//               No playoff result feed exists yet, so only the seeding round
+//               is populated; later rounds show "—". Empty standings → notice.
 // ---------------------------------------------------------------------------
 
-type Match = { tn: string; tf: string; ts: number | null; bn: string; bf: string; bs: number | null }
-type SideData = { seed: Match[]; adv: Record<number, ReadonlyArray<readonly [number, number]>> }
-type BracketData = {
-  mine: string
-  left: SideData
-  right: SideData
-  final: { tn: string; tf: string; bn: string; bf: string }
-}
+type Win = 't' | 'b' | null
+type Match = { tn: string; tf: string; ts: number | null; bn: string; bf: string; bs: number | null; win?: Win }
 
-// ---------------------------- seed data ------------------------------------
+// --------- WC bracket wiring (fixture ids → geometry slots) -----------------
+// Derived from the R16+ pairings in lib/fixtures.ts (W<id> references), so the
+// tree below feeds winners into exactly the matches the schedule defines.
+//   R16 89=W74,W77  90=W73,W75  91=W76,W78  92=W79,W80
+//       93=W83,W84  94=W81,W82  95=W86,W88  96=W85,W87
+//   QF  97=W89,W90  98=W93,W94  99=W91,W92  100=W95,W96
+//   SF  101=W97,W98 102=W99,W100   Final 104=W101,W102
+type SideIds = { r0: number[]; r1: number[]; r2: number[]; r3: number[] }
 
-const WC: BracketData = {
-  mine: 'Brazília',
-  left: {
-    seed: [
-      { tn: 'Argentína', tf: '🇦🇷', ts: 2, bn: 'Ausztria', bf: '🇦🇹', bs: 0 },
-      { tn: 'Marokkó', tf: '🇲🇦', ts: 2, bn: 'Horváto.', bf: '🇭🇷', bs: 1 },
-      { tn: 'Németo.', tf: '🇩🇪', ts: 3, bn: 'Szenegál', bf: '🇸🇳', bs: 1 },
-      { tn: 'Portugália', tf: '🇵🇹', ts: 2, bn: 'Uruguay', bf: '🇺🇾', bs: 1 },
-      { tn: 'Spanyolo.', tf: '🇪🇸', ts: 2, bn: 'Japán', bf: '🇯🇵', bs: 0 },
-      { tn: 'Belgium', tf: '🇧🇪', ts: 2, bn: 'Kolumbia', bf: '🇨🇴', bs: 1 },
-      { tn: 'Hollandia', tf: '🇳🇱', ts: 3, bn: 'Ecuador', bf: '🇪🇨', bs: 2 },
-      { tn: 'Brazília', tf: '🇧🇷', ts: 2, bn: 'Svájc', bf: '🇨🇭', bs: 0 },
-    ],
-    adv: { 1: [[1, 0], [1, 2], [2, 1], [1, 3]], 2: [[2, 1], [0, 2]], 3: [[0, 1]] },
-  },
-  right: {
-    seed: [
-      { tn: 'Franciao.', tf: '🇫🇷', ts: 2, bn: 'Norvégia', bf: '🇳🇴', bs: 1 },
-      { tn: 'Anglia', tf: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', ts: 3, bn: 'Egyiptom', bf: '🇪🇬', bs: 0 },
-      { tn: 'Dél-Korea', tf: '🇰🇷', ts: 2, bn: 'Mexikó', bf: '🇲🇽', bs: 1 },
-      { tn: 'USA', tf: '🇺🇸', ts: 2, bn: 'Ausztrália', bf: '🇦🇺', bs: 1 },
-      { tn: 'Katar', tf: '🇶🇦', ts: 1, bn: 'Kanada', bf: '🇨🇦', bs: 0 },
-      { tn: 'Tunézia', tf: '🇹🇳', ts: 2, bn: 'Szaúd-A.', bf: '🇸🇦', bs: 1 },
-      { tn: 'Elefántcs.', tf: '🇨🇮', ts: 2, bn: 'Paraguay', bf: '🇵🇾', bs: 1 },
-      { tn: 'Üzbég.', tf: '🇺🇿', ts: 2, bn: 'Panama', bf: '🇵🇦', bs: 0 },
-    ],
-    adv: { 1: [[2, 1], [0, 2], [0, 1], [2, 1]], 2: [[3, 1], [0, 1]], 3: [[2, 0]] },
-  },
-  final: { tn: 'Brazília', tf: '🇧🇷', bn: 'Franciao.', bf: '🇫🇷' },
+const WC_LEFT: SideIds = {
+  r0: [74, 77, 73, 75, 83, 84, 81, 82],
+  r1: [89, 90, 93, 94],
+  r2: [97, 98],
+  r3: [101],
 }
+const WC_RIGHT: SideIds = {
+  r0: [76, 78, 79, 80, 86, 88, 85, 87],
+  r1: [91, 92, 95, 96],
+  r2: [99, 100],
+  r3: [102],
+}
+const WC_FINAL_ID = 104
 
-const PB: BracketData = {
-  mine: 'Tomi',
-  left: {
-    seed: [
-      { tn: 'Tomi', tf: '', ts: 24, bn: 'Zsolt', bf: '', bs: 19 },
-      { tn: 'Bence', tf: '', ts: 21, bn: 'Áron', bf: '', bs: 28 },
-      { tn: 'Dávid', tf: '', ts: 26, bn: 'Gergő', bf: '', bs: 22 },
-      { tn: 'Marci', tf: '', ts: 18, bn: 'Petra', bf: '', bs: 25 },
-      { tn: 'Kata', tf: '', ts: 23, bn: 'Levi', bf: '', bs: 20 },
-      { tn: 'Nóra', tf: '', ts: 27, bn: 'Bálint', bf: '', bs: 24 },
-      { tn: 'Gábor', tf: '', ts: 22, bn: 'Eszter', bf: '', bs: 26 },
-      { tn: 'Tamás', tf: '', ts: 30, bn: 'Réka', bf: '', bs: 21 },
-    ],
-    adv: { 1: [[26, 22], [20, 24], [19, 23], [25, 21]], 2: [[28, 25], [22, 24]], 3: [[27, 21]] },
-  },
-  right: {
-    seed: [
-      { tn: 'Máté', tf: '', ts: 25, bn: 'Andris', bf: '', bs: 22 },
-      { tn: 'Viktor', tf: '', ts: 20, bn: 'Csaba', bf: '', bs: 27 },
-      { tn: 'Ádám', tf: '', ts: 29, bn: 'Roland', bf: '', bs: 24 },
-      { tn: 'Botond', tf: '', ts: 23, bn: 'Olivér', bf: '', bs: 26 },
-      { tn: 'Dénes', tf: '', ts: 22, bn: 'Feri', bf: '', bs: 19 },
-      { tn: 'Imre', tf: '', ts: 26, bn: 'Józsi', bf: '', bs: 28 },
-      { tn: 'Karcsi', tf: '', ts: 24, bn: 'Laci', bf: '', bs: 21 },
-      { tn: 'Norbi', tf: '', ts: 18, bn: 'Pál', bf: '', bs: 23 },
-    ],
-    adv: { 1: [[24, 27], [26, 22], [21, 25], [23, 20]], 2: [[28, 30], [24, 22]], 3: [[27, 25]] },
-  },
-  final: { tn: 'Tomi', tf: '', bn: 'Ádám', bf: '' },
-}
+// --------- Párbaj seeding (standard 32-team single-elim bracket order) -------
+// Seeds are 1-based finishing places from the frozen round-10 standings.
+const PB_LEFT_SEEDS: ReadonlyArray<readonly [number, number]> = [
+  [1, 32], [16, 17], [8, 25], [9, 24], [4, 29], [13, 20], [5, 28], [12, 21],
+]
+const PB_RIGHT_SEEDS: ReadonlyArray<readonly [number, number]> = [
+  [2, 31], [15, 18], [7, 26], [10, 23], [3, 30], [14, 19], [6, 27], [11, 22],
+]
 
 // ---------------------------- geometry -------------------------------------
 
@@ -101,31 +74,91 @@ const finalLeft = sideW + finalGap // 740
 const finalRight = finalLeft + finalW // 896
 
 const LINE_COLOR = '#cfe0de'
+const EMPTY: Match = { tn: '—', tf: '', ts: null, bn: '—', bf: '', bs: null, win: null }
+
+// ----------------------------- data → matches ------------------------------
+
+function decideWin(res?: { h: number; a: number; pen_h?: number; pen_a?: number } | null): Win {
+  if (!res) return null
+  if (res.h > res.a) return 't'
+  if (res.a > res.h) return 'b'
+  if (res.pen_h != null && res.pen_a != null) {
+    if (res.pen_h > res.pen_a) return 't'
+    if (res.pen_a > res.pen_h) return 'b'
+  }
+  return null
+}
 
 function winner(mt: Match): { n: string; f: string } | null {
-  if (mt.ts == null || mt.bs == null) return null
-  return mt.ts >= mt.bs ? { n: mt.tn, f: mt.tf } : { n: mt.bn, f: mt.bf }
+  if (mt.win === 't') return { n: mt.tn, f: mt.tf }
+  if (mt.win === 'b') return { n: mt.bn, f: mt.bf }
+  return null
 }
 
-// Build rounds 0..3 by pairing adjacent winners and applying adv[] scores.
-function buildRounds(side: SideData): Match[][] {
-  const rounds: Match[][] = [side.seed.map((s) => ({ ...s }))]
-  for (let r = 1; r <= 3; r++) {
-    const prev = rounds[r - 1]
-    const out: Match[] = []
-    for (let j = 0; j < prev.length / 2; j++) {
-      const wt = winner(prev[2 * j])
-      const wb = winner(prev[2 * j + 1])
-      const sc = side.adv[r]?.[j] ?? null
-      out.push({
-        tn: wt ? wt.n : '—', tf: wt ? wt.f : '', ts: sc ? sc[0] : null,
-        bn: wb ? wb.n : '—', bf: wb ? wb.f : '', bs: sc ? sc[1] : null,
-      })
-    }
-    rounds.push(out)
+// One WC match from live state: teams via koTeams, scores via results.
+function wcMatch(state: GameState, id: number): Match {
+  const ko = state.koTeams?.[String(id)]
+  const res = state.results?.[String(id)] ?? null
+  const home = ko?.home
+  const away = ko?.away
+  return {
+    tn: home || '—',
+    tf: home ? flag(home) : '',
+    ts: res ? res.h : null,
+    bn: away || '—',
+    bf: away ? flag(away) : '',
+    bs: res ? res.a : null,
+    win: decideWin(res),
   }
+}
+
+// Build a WC half (R32 → SF). koTeams is preferred for every round; where a
+// later-round slot has no team yet, fall back to the winner of the feeding
+// match (advance via results).
+function buildWcSide(state: GameState, ids: SideIds): Match[][] {
+  const rounds: Match[][] = [ids.r0.map((id) => wcMatch(state, id))]
+  const next = [ids.r1, ids.r2, ids.r3]
+  next.forEach((idList, idx) => {
+    const r = idx + 1
+    const prev = rounds[r - 1]
+    rounds.push(
+      idList.map((id, j) => {
+        const m = wcMatch(state, id)
+        if (m.tn === '—') {
+          const w = winner(prev[2 * j])
+          if (w) { m.tn = w.n; m.tf = w.f }
+        }
+        if (m.bn === '—') {
+          const w = winner(prev[2 * j + 1])
+          if (w) { m.bn = w.n; m.bf = w.f }
+        }
+        return m
+      }),
+    )
+  })
   return rounds
 }
+
+function emptyRound(n: number): Match[] {
+  return Array.from({ length: n }, () => ({ ...EMPTY }))
+}
+
+// Map seed (1-based place) → player name from the frozen standings.
+function seedName(bySeed: Record<number, string>, seed: number): string {
+  return bySeed[seed] || '—'
+}
+
+// Build a Párbaj half. Only the seeding round is populated (no playoff result
+// feed); later rounds are placeholders.
+function buildPbSide(bySeed: Record<number, string>, seeds: ReadonlyArray<readonly [number, number]>): Match[][] {
+  const r0: Match[] = seeds.map(([a, b]) => ({
+    tn: seedName(bySeed, a), tf: '', ts: null,
+    bn: seedName(bySeed, b), bf: '', bs: null, win: null,
+  }))
+  return [r0, emptyRound(4), emptyRound(2), emptyRound(1)]
+}
+
+// ----------------------------- view-models ---------------------------------
 
 type CardVM = {
   key: string
@@ -137,11 +170,11 @@ type LineVM = { key: string; style: CSSProperties }
 type LabelVM = { key: string; text: string; style: CSSProperties }
 
 function cardStyles(mt: Match, mine: string) {
-  const played = mt.ts != null && mt.bs != null
-  const topWin = played && (mt.ts as number) >= (mt.bs as number)
-  const botWin = played && (mt.bs as number) > (mt.ts as number)
-  const mineTop = mt.tn === mine
-  const mineBot = mt.bn === mine
+  const decided = mt.win != null
+  const topWin = mt.win === 't'
+  const botWin = mt.win === 'b'
+  const mineTop = mt.tn !== '—' && mt.tn === mine
+  const mineBot = mt.bn !== '—' && mt.bn === mine
   const mineHere = mineTop || mineBot
 
   const base: CSSProperties = {
@@ -166,7 +199,7 @@ function cardStyles(mt: Match, mine: string) {
     ...(mineRow ? { background: 'rgba(20,160,140,.12)' } : {}),
     color: win ? '#007E73' : '#11302E',
     fontWeight: win ? 800 : 600,
-    ...(played && !win ? { opacity: 0.5 } : {}),
+    ...(decided && !win ? { opacity: 0.5 } : {}),
   })
   const sc = (win: boolean): CSSProperties => ({
     flex: 'none',
@@ -246,17 +279,103 @@ function Card({ c }: { c: CardVM }) {
   )
 }
 
+// Map each player to their finishing place (frozen standings → seed lookup).
+function seedMap(standings: SwissStanding[]): Record<number, string> {
+  const sorted = [...standings].sort((a, b) => (a.place ?? 9_999) - (b.place ?? 9_999))
+  const out: Record<number, string> = {}
+  sorted.forEach((s, i) => {
+    const place = s.place ?? i + 1
+    if (!out[place]) out[place] = s.name
+  })
+  return out
+}
+
+// ----------------------------- placeholder ---------------------------------
+
+function Notice({ text }: { text: string }) {
+  return (
+    <div
+      className="broadcast-dark mb-4 flex flex-col items-center gap-2 rounded-[18px] px-5 py-10 text-center text-white"
+      style={{ boxShadow: '0 12px 30px rgba(12,77,73,.25)' }}
+    >
+      <span style={{ fontSize: 32 }}>🪜</span>
+      <div style={{ fontSize: 15, fontWeight: 800, maxWidth: 320, lineHeight: 1.4 }}>{text}</div>
+    </div>
+  )
+}
+
+// ----------------------------- component -----------------------------------
+
 export function Bracket({ variant }: { variant: 'parbaj' | 'wc' }) {
-  const data = variant === 'parbaj' ? PB : WC
-  const mine = data.mine
-  const f = data.final
+  const { state, session } = useGame()
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Center the stage horizontally whenever the data identity changes.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+  }, [variant, state])
+
+  if (!state) {
+    return <Notice text="Ágrajz betöltése…" />
+  }
+
+  const player = session?.player ?? ''
+
+  // Resolve "mine" — the highlighted name.
+  // WC: the player's favourite team (post-switch if switched). Párbaj: the player.
+  let mine = player
+  if (variant === 'wc') {
+    const fav = player ? state.favorites?.[encodeClientKey(player)] : undefined
+    mine = fav ? (fav.switched ? fav.newTeam || fav.team : fav.team) : ''
+  }
+
+  // Párbaj with no frozen seeding yet → graceful notice.
+  const standings = state.swiss?.standings ?? []
+  if (variant === 'parbaj' && standings.length === 0) {
+    return <Notice text="A rájátszás a 10. forduló után indul — addig a befagyasztott tabella adja a kiemelést." />
+  }
+
+  // Build both halves.
+  let leftRounds: Match[][]
+  let rightRounds: Match[][]
+  if (variant === 'wc') {
+    leftRounds = buildWcSide(state, WC_LEFT)
+    rightRounds = buildWcSide(state, WC_RIGHT)
+  } else {
+    const bySeed = seedMap(standings)
+    leftRounds = buildPbSide(bySeed, PB_LEFT_SEEDS)
+    rightRounds = buildPbSide(bySeed, PB_RIGHT_SEEDS)
+  }
+
+  // Final pairing: prefer koTeams[104] (WC), else winners of the two SFs.
+  const leftSFWin = winner(leftRounds[3][0])
+  const rightSFWin = winner(rightRounds[3][0])
+  let finalMt: Match = {
+    tn: leftSFWin?.n ?? '—', tf: leftSFWin?.f ?? '', ts: null,
+    bn: rightSFWin?.n ?? '—', bf: rightSFWin?.f ?? '', bs: null, win: null,
+  }
+  if (variant === 'wc') {
+    const ko = state.koTeams?.[String(WC_FINAL_ID)]
+    const res = state.results?.[String(WC_FINAL_ID)] ?? null
+    finalMt = {
+      tn: ko?.home || finalMt.tn,
+      tf: ko?.home ? flag(ko.home) : finalMt.tf,
+      ts: res ? res.h : null,
+      bn: ko?.away || finalMt.bn,
+      bf: ko?.away ? flag(ko.away) : finalMt.bf,
+      bs: res ? res.a : null,
+      win: decideWin(res),
+    }
+  }
+  const finalKnown = finalMt.tn !== '—' || finalMt.bn !== '—'
 
   const cards: CardVM[] = []
   const lines: LineVM[] = []
   const roundLeftsL: number[] = []
   const roundLeftsR: number[] = []
-  buildSide(buildRounds(data.left), 0, false, mine, cards, lines, roundLeftsL, 'L')
-  buildSide(buildRounds(data.right), rightX0, true, mine, cards, lines, roundLeftsR, 'R')
+  buildSide(leftRounds, 0, false, mine, cards, lines, roundLeftsL, 'L')
+  buildSide(rightRounds, rightX0, true, mine, cards, lines, roundLeftsR, 'R')
 
   // SF -> final connectors
   const leftSFright = 3 * (CARD_W + CONN) + CARD_W // 662
@@ -300,14 +419,10 @@ export function Bracket({ variant }: { variant: 'parbaj' | 'wc' }) {
   }
   const fRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', fontSize: 13, fontWeight: 800, color: '#fff' }
 
-  const finalLine = `${f.tn} ${f.tf}  vs  ${f.bf} ${f.bn}`.replace(/\s+/g, ' ').trim()
-  const yourPick = variant === 'parbaj' ? 'Tomi — bajnok' : 'Brazília — bajnok'
-
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
-  }, [variant])
+  const finalLine = finalKnown
+    ? `${finalMt.tn} ${finalMt.tf}  vs  ${finalMt.bf} ${finalMt.bn}`.replace(/\s+/g, ' ').trim()
+    : 'TBD'
+  const yourPick = mine ? `${mine} — bajnok` : 'TBD'
 
   return (
     <div className="mb-4">
@@ -321,10 +436,12 @@ export function Bracket({ variant }: { variant: 'parbaj' | 'wc' }) {
           <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.12em', color: '#9fe6dd' }}>DÖNTŐ</div>
           <div style={{ fontSize: 17, fontWeight: 900, marginTop: 2 }}>{finalLine}</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: '#9fe6dd', fontWeight: 700 }}>A te tipped</div>
-          <div style={{ fontSize: 14, fontWeight: 900, color: '#FFD700' }}>{yourPick}</div>
-        </div>
+        {mine ? (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: '#9fe6dd', fontWeight: 700 }}>A te tipped</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#FFD700' }}>{yourPick}</div>
+          </div>
+        ) : null}
       </div>
 
       {/* bracket stage (horizontal scroll) */}
@@ -345,16 +462,16 @@ export function Bracket({ variant }: { variant: 'parbaj' | 'wc' }) {
           {/* final + champion node */}
           <div style={finalCardStyle}>
             <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '.1em', color: '#9fe6dd', textAlign: 'center', textTransform: 'uppercase' }}>
-              Döntő · él
+              Döntő
             </div>
             <div style={fRow}>
-              <span style={{ width: 18, textAlign: 'center', flex: 'none' }}>{f.tf}</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.tn}</span>
+              <span style={{ width: 18, textAlign: 'center', flex: 'none' }}>{finalMt.tf}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{finalMt.tn}</span>
             </div>
             <div style={{ height: 1, background: 'rgba(255,255,255,.18)' }} />
             <div style={fRow}>
-              <span style={{ width: 18, textAlign: 'center', flex: 'none' }}>{f.bf}</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.bn}</span>
+              <span style={{ width: 18, textAlign: 'center', flex: 'none' }}>{finalMt.bf}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{finalMt.bn}</span>
             </div>
           </div>
         </div>

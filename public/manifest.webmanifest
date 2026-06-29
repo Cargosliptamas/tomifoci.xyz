@@ -1,0 +1,32 @@
+{
+  "name": "Tomifoci 2026",
+  "short_name": "Tomifoci",
+  "description": "Világbajnoki tippjáték 2026 — eredmény-tipp, Wizard of ODDS és Svájci liga.",
+  "start_url": "/meccsek",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#00B8A9",
+  "background_color": "#EAF6F5",
+  "lang": "hu",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

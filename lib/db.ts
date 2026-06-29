@@ -159,7 +159,7 @@ async function loadStateTablesFromNeon(): Promise<Record<string, Row[]>> {
       ORDER BY id ASC
     `,
     sql`
-      SELECT table_name AS "tableName", payload
+      SELECT table_name AS "tableName", convex_id AS "convexId", payload
       FROM imported_rows
       ORDER BY id ASC
     `
@@ -175,11 +175,61 @@ async function loadStateTablesFromNeon(): Promise<Record<string, Row[]>> {
     tables[table] = []
   }
 
-  for (const row of importedRows as Array<{ tableName: string; payload: Row }>) {
-    ;(tables[row.tableName] ??= []).push(row.payload)
+  for (const row of importedRows as Array<{ tableName: string; convexId: string; payload: Row }>) {
+    if (row.tableName === 'wizardPicks') {
+      // wizardPicks rows are keyed one-per-player; the player name only lives in
+      // the convex_id ('hu:<player>'). Migration payloads nest picks as
+      // { <matchId>: { pick, oddsAtPick } }; rewrite payloads are already flat
+      // ({ player, matchId, pick, ... }). Normalise both to flat pick rows so the
+      // game engine can attribute each pick to a player.
+      for (const pick of expandWizardPicks(row.payload, row.convexId)) tables.wizardPicks.push(pick)
+    } else if (row.tableName === 'wizardProfiles') {
+      // wizardProfiles payloads ({ active, mirror }) also omit the player — inject
+      // it from the convex_id so the engine and public state can key on it.
+      tables.wizardProfiles.push({ player: row.payload.player ?? playerFromConvexId(row.convexId), ...row.payload })
+    } else {
+      ;(tables[row.tableName] ??= []).push(row.payload)
+    }
   }
 
   return tables
+}
+
+// Strip the leading community prefix ('hu:' / 'en:') from a convex_id to recover
+// the player name. wizardPicks/wizardProfiles migration ids are exactly 'hu:<player>'.
+function playerFromConvexId(convexId: string | null | undefined): string | undefined {
+  if (!convexId) return undefined
+  const s = String(convexId)
+  if (s.startsWith('hu:') || s.startsWith('en:')) return s.slice(3)
+  return s
+}
+
+// Normalise a wizardPicks imported_row into flat pick records.
+function expandWizardPicks(payload: Row, convexId: string): Row[] {
+  // Flat rewrite shape: a single pick row already carrying its own player/matchId.
+  if (payload && payload.matchId != null && payload.pick != null) {
+    const player = payload.player ?? playerFromConvexId(convexId)
+    return player ? [{ ...payload, player, matchId: Number(payload.matchId) }] : []
+  }
+  // Nested migration shape: { <matchId>: { pick, oddsAtPick }, ... } with no player.
+  const player = payload?.player ?? playerFromConvexId(convexId)
+  if (!player || !payload) return []
+  const out: Row[] = []
+  for (const [key, value] of Object.entries(payload)) {
+    const matchId = Number(key)
+    if (!Number.isInteger(matchId)) continue
+    if (!value || typeof value !== 'object' || !(value as Row).pick) continue
+    const rec = value as Row
+    out.push({
+      player,
+      matchId,
+      pick: rec.pick,
+      oddsAtPick: Number(rec.oddsAtPick ?? 0) || 0,
+      oddsSource: rec.oddsSource,
+      lockedAt: rec.lockedAt
+    })
+  }
+  return out
 }
 
 async function sha256Hex(value: string): Promise<string> {
