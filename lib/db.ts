@@ -93,6 +93,34 @@ export async function setPlayerPinInNeon(player: string, pin: string, community:
   return true
 }
 
+// Change a player's PIN. If they already have a PIN, the supplied `oldPin` must
+// verify before the new PIN is written; otherwise (claim-on-first-login) the new
+// PIN is simply set. Re-salts and re-hashes the new PIN into the pinHashes row.
+// Returns { ok } or { ok:false, reason }.
+export async function changePlayerPinInNeon(
+  player: string,
+  oldPin: string,
+  newPin: string,
+  community: 'hu' | 'en' = 'hu'
+): Promise<{ ok: boolean; reason?: 'bad-pin' }> {
+  const hasPin = await playerHasPin(player, community)
+  if (hasPin) {
+    const verify = await verifyPlayerPinInNeon(player, oldPin, community)
+    if (!verify.ok) return { ok: false, reason: 'bad-pin' }
+  }
+  const salt = crypto.randomUUID().replace(/-/g, '')
+  const hash = await sha256Hex(`${salt}:${newPin}`)
+  await upsertImportedRow('pinHashes', `${community}:${player}`, {
+    name: player,
+    community,
+    salt,
+    hash,
+    setAt: Date.now(),
+    source: hasPin ? 'change-pin' : 'claim-on-first-login'
+  })
+  return { ok: true }
+}
+
 export async function savePredictionsToNeon(args: {
   player: string
   community: 'hu' | 'en'

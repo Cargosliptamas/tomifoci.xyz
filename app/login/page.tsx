@@ -26,6 +26,27 @@ export default function LoginPage() {
       .catch(() => setLoadError('offline'))
   }, [])
 
+  // Automated-test auto-login: /login?as=<name> logs straight in WITHOUT a PIN. The server
+  // only honours this for the single TEST_LOGIN_USER (e.g. Firecrawl); for anyone else the
+  // PIN-less request is rejected and we fall back to the normal flow.
+  useEffect(() => {
+    const as = new URLSearchParams(window.location.search).get('as')
+    if (!as) return
+    void fetch('/api/auth/player-pin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ player: as, pin: '0000', community: 'hu' })
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) {
+          writeSession({ player: as, pin: '0000', community: 'hu' })
+          router.push('/meccsek')
+        }
+      })
+      .catch(() => {})
+  }, [router])
+
   const filtered = useMemo(
     () => players.filter((p) => p.toLowerCase().includes(search.toLowerCase())),
     [players, search]

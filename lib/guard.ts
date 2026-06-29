@@ -17,7 +17,17 @@ export async function guardWrite(body: {
   const community = body.community === 'en' ? 'en' : 'hu'
   const matchId = Number(body.matchId)
 
-  if (!player || !/^\d{4}$/.test(pin) || !Number.isInteger(matchId)) {
+  if (!player || !Number.isInteger(matchId)) {
+    return { ok: false, status: 400, error: 'bad-request' }
+  }
+
+  // Automated-test user (e.g. Firecrawl): skip PIN + kickoff lock so a crawler can exercise
+  // writes. Off unless TEST_LOGIN_USER env names this exact player.
+  if (process.env.TEST_LOGIN_USER && player === process.env.TEST_LOGIN_USER) {
+    return { ok: true, community, player }
+  }
+
+  if (!/^\d{4}$/.test(pin)) {
     return { ok: false, status: 400, error: 'bad-request' }
   }
 

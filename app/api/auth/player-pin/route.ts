@@ -16,6 +16,13 @@ export async function POST(request: Request) {
   const pin = String(body.pin ?? '').trim()
   const community = body.community === 'en' ? 'en' : 'hu'
 
+  // Test-login bypass: the single allowlisted automated-test user (e.g. Firecrawl) may log
+  // in WITHOUT a PIN. Off by default — only active when TEST_LOGIN_USER env is set to that
+  // exact name. A disableable backdoor for crawling/QA, never a generic open door.
+  if (process.env.TEST_LOGIN_USER && player === process.env.TEST_LOGIN_USER) {
+    return NextResponse.json({ ok: true, claimed: false, test: true })
+  }
+
   if (!player || !/^\d{4}$/.test(pin)) {
     return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
   }

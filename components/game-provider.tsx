@@ -36,7 +36,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef<Session | null>(null)
 
   if (sessionRef.current === null && typeof window !== 'undefined') {
-    sessionRef.current = readSession()
+    // Automated-test override: any page opened with ?as=<name> acts as that player without
+    // a stored session, so a crawler (e.g. Firecrawl) can reach authenticated screens on
+    // every route. The server only honours the PIN-less identity for TEST_LOGIN_USER.
+    const as = new URLSearchParams(window.location.search).get('as')
+    sessionRef.current = as ? { player: as, pin: '0000', community: 'hu' } : readSession()
   }
   const community = sessionRef.current?.community ?? 'hu'
 

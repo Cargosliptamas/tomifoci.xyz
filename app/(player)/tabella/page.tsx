@@ -7,6 +7,7 @@ import { encodeClientKey } from '@/lib/keys'
 import { flag } from '@/lib/fixtures'
 import { groupTables, bestThirds } from '@/lib/groups'
 import { Board, Row, Rank, Avatar, Empty } from '@/components/standings-ui'
+import { PlayerHistoryModal } from '@/components/player-history-modal'
 import type { GameState, RankingRow } from '@/lib/types'
 
 const MODES = [
@@ -141,6 +142,7 @@ function TipBoard({
   me: string
 }) {
   const rows = rankings[encodeClientKey(`${scope}_Mindenki`)] ?? []
+  const [player, setPlayer] = useState<string | null>(null)
   return (
     <>
       <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto pb-1">
@@ -163,7 +165,7 @@ function TipBoard({
       <Board>
         {rows.length === 0 && <Empty />}
         {rows.map((r, i) => (
-          <Row key={r.name} me={me} name={r.name}>
+          <Row key={r.name} me={me} name={r.name} onPlayer={setPlayer}>
             <Rank n={i + 1} />
             <Avatar name={r.name} />
             <span className="flex-1 truncate text-[14px] font-bold">{r.name}</span>
@@ -176,6 +178,7 @@ function TipBoard({
           </Row>
         ))}
       </Board>
+      {player && <PlayerHistoryModal player={player} onClose={() => setPlayer(null)} />}
     </>
   )
 }

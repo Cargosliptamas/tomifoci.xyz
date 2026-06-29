@@ -1,17 +1,31 @@
 'use client'
 
+import { useState } from 'react'
 import type { WizardRankRow, SwissStanding } from '@/lib/types'
+import { PlayerHistoryModal } from '@/components/player-history-modal'
 
 export function Board({ children }: { children: React.ReactNode }) {
   return <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">{children}</div>
 }
 
-export function Row({ me, name, children }: { me: string; name: string; children: React.ReactNode }) {
+export function Row({
+  me,
+  name,
+  onPlayer,
+  children
+}: {
+  me: string
+  name: string
+  onPlayer?: (name: string) => void
+  children: React.ReactNode
+}) {
   const isMe = name === me
   return (
     <div
-      className="flex items-center gap-[10px] border-b border-[#EBF6F5] px-4 py-3 last:border-b-0"
+      className="flex items-center gap-[10px] border-b border-[#EBF6F5] px-4 py-3 text-left last:border-b-0"
       style={isMe ? { background: 'rgba(20,160,140,0.1)', borderLeft: '3px solid #14a08c' } : undefined}
+      role={onPlayer ? 'button' : undefined}
+      onClick={onPlayer ? () => onPlayer(name) : undefined}
     >
       {children}
     </div>
@@ -35,6 +49,7 @@ export function Empty() {
 }
 
 export function WizBoard({ rows, me }: { rows: WizardRankRow[]; me: string }) {
+  const [player, setPlayer] = useState<string | null>(null)
   return (
     <>
       <div className="broadcast-info mb-[14px] rounded-[14px] px-[14px] py-3 text-xs font-semibold">
@@ -43,7 +58,7 @@ export function WizBoard({ rows, me }: { rows: WizardRankRow[]; me: string }) {
       <Board>
         {rows.length === 0 && <Empty />}
         {rows.map((r, i) => (
-          <Row key={r.name} me={me} name={r.name}>
+          <Row key={r.name} me={me} name={r.name} onPlayer={setPlayer}>
             <Rank n={r.place ?? i + 1} />
             <span className="flex-1 truncate text-[14px] font-bold">{r.name}</span>
             <span className="w-[84px] text-center text-xs font-bold text-[#0D3331]/55">
@@ -53,11 +68,13 @@ export function WizBoard({ rows, me }: { rows: WizardRankRow[]; me: string }) {
           </Row>
         ))}
       </Board>
+      {player && <PlayerHistoryModal player={player} onClose={() => setPlayer(null)} />}
     </>
   )
 }
 
 export function SwissBoard({ standings, me }: { standings: SwissStanding[]; me: string }) {
+  const [player, setPlayer] = useState<string | null>(null)
   return (
     <>
       <div className="broadcast-info mb-[14px] rounded-[14px] px-[14px] py-3 text-xs font-semibold">
@@ -66,7 +83,7 @@ export function SwissBoard({ standings, me }: { standings: SwissStanding[]; me: 
       <Board>
         {standings.length === 0 && <Empty />}
         {standings.map((r, i) => (
-          <Row key={r.name} me={me} name={r.name}>
+          <Row key={r.name} me={me} name={r.name} onPlayer={setPlayer}>
             <Rank n={r.place ?? i + 1} />
             <span className="flex-1 truncate text-[14px] font-bold">{r.name}</span>
             <span className="w-[46px] text-center text-xs font-bold text-[#0D3331]/55">
@@ -76,6 +93,7 @@ export function SwissBoard({ standings, me }: { standings: SwissStanding[]; me: 
           </Row>
         ))}
       </Board>
+      {player && <PlayerHistoryModal player={player} onClose={() => setPlayer(null)} />}
     </>
   )
 }
