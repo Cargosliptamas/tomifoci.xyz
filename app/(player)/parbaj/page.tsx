@@ -1,9 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { PageHeader } from '@/components/page-header'
 import { useGame } from '@/components/game-provider'
 import { SwissBoard } from '@/components/standings-ui'
+import { Bracket } from '@/components/bracket'
 
 export default function ParbajPage() {
   const { state, session, status } = useGame()
@@ -30,12 +30,13 @@ export default function ParbajPage() {
           <SwissBoard standings={state?.swiss?.standings ?? []} me={me} />
         )}
 
-        <Link
-          href="/brackets"
-          className="tap mt-4 flex w-full items-center justify-center rounded-[13px] border border-[#cfe0de] bg-white py-3 text-[13px] font-extrabold text-[#007E73] hover:bg-[#F7FBFA]"
-        >
-          ♟ Rájátszás ágrajz (Top 32) →
-        </Link>
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 px-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
+          ♟ RÁJÁTSZÁS ÁGRAJZ (TOP 32)
+        </div>
+        <Bracket variant="parbaj" />
       </div>
     </>
   )

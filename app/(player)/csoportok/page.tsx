@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/page-header'
 import { useGame } from '@/components/game-provider'
 import { flag } from '@/lib/fixtures'
 import { groupTables, bestThirds } from '@/lib/groups'
+import { Bracket } from '@/components/bracket'
 
 export default function CsoportokPage() {
   const { state, status } = useGame()
@@ -79,6 +80,13 @@ export default function CsoportokPage() {
           ))}
           {!thirds.length && <div className="px-4 py-8 text-center text-[13px] text-[#0D3331]/45">Még nincs csoporteredmény.</div>}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-2 px-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
+          🏆 KIESÉSES ÁGRAJZ (VB)
+        </div>
+        <Bracket variant="wc" />
       </div>
     </>
   )
