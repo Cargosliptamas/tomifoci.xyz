@@ -16,7 +16,7 @@ export default function ParbajPage() {
       <PageHeader eyebrow="♟ Svájci párbaj" title="Párbaj" />
       <div className="mx-auto max-w-[600px] px-[18px] pt-4">
         {round != null && (
-          <div className="mb-3 flex items-center justify-between rounded-[12px] bg-white px-[14px] py-2.5 shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+          <div className="mb-3 flex items-center justify-between rounded-[12px] bg-white px-[14px] py-2.5 surface-card">
             <span className="text-[13px] font-extrabold">{frozen ? 'Befagyasztva' : `${round}. forduló`}</span>
             <span className="text-[11px] font-semibold text-[#0D3331]/55">
               {frozen ? '10. forduló után — ez adja a rájátszás kiemelést' : 'a kör 8 meccsének alappontja számít'}
@@ -32,7 +32,7 @@ export default function ParbajPage() {
 
         <Link
           href="/brackets"
-          className="mt-4 flex w-full items-center justify-center rounded-[13px] border border-[#cfe0de] bg-white py-3 text-[13px] font-extrabold text-[#007E73]"
+          className="tap mt-4 flex w-full items-center justify-center rounded-[13px] border border-[#cfe0de] bg-white py-3 text-[13px] font-extrabold text-[#007E73] hover:bg-[#F7FBFA]"
         >
           ♟ Rájátszás ágrajz (Top 32) →
         </Link>

@@ -134,7 +134,7 @@ export default function LoginPage() {
                   setSelected(name)
                   setPin('')
                 }}
-                className="flex items-center gap-[11px] rounded-[14px] border border-[#DCEFEE] bg-white px-[13px] py-3 text-left shadow-[0_2px_8px_rgba(13,51,49,0.04)]"
+                className="tap flex items-center gap-[11px] rounded-[14px] border border-[#DCEFEE] bg-white px-[13px] py-3 text-left shadow-[0_1px_3px_rgba(13,51,49,0.05)] hover:border-[#bfe4df]"
               >
                 <span
                   className="flex size-9 items-center justify-center rounded-full text-[15px] font-black text-white"
@@ -187,8 +187,8 @@ export default function LoginPage() {
                   disabled={busy}
                   className={
                     key === 'del'
-                      ? 'h-[60px] rounded-[16px] text-[21px] font-bold text-[#0D3331]/60'
-                      : 'h-[60px] rounded-[16px] bg-white text-[23px] font-extrabold text-[#0D3331] shadow-[0_2px_8px_rgba(13,51,49,0.06)]'
+                      ? 'tap h-[60px] rounded-[16px] text-[21px] font-bold text-[#0D3331]/60 hover:text-[#0D3331]'
+                      : 'tap h-[60px] rounded-[16px] bg-white text-[23px] font-extrabold text-[#0D3331] shadow-[0_1px_3px_rgba(13,51,49,0.05)] hover:bg-[#F7FBFA]'
                   }
                 >
                   {key === 'del' ? '⌫' : key}

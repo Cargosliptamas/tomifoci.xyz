@@ -42,8 +42,8 @@ export default function Landing() {
             <button
               key={l}
               onClick={() => setLang(l)}
-              className={`rounded-full px-3 py-[5px] text-xs uppercase ${
-                lang === l ? 'bg-white font-black text-[#0C4D49]' : 'font-extrabold text-white/70'
+              className={`tap rounded-full px-3 py-[5px] text-xs uppercase ${
+                lang === l ? 'bg-white font-black text-[#0C4D49]' : 'font-extrabold text-white/70 hover:text-white'
               }`}
             >
               {l}
@@ -94,7 +94,7 @@ export default function Landing() {
 
         <Link
           href="/login"
-          className="mt-[26px] rounded-full px-10 py-4 text-[16px] font-black shadow-[0_14px_30px_rgba(0,201,186,0.35),inset_0_1px_0_rgba(255,255,255,0.4)]"
+          className="tap mt-[26px] rounded-full px-10 py-4 text-[16px] font-black shadow-[0_14px_30px_rgba(0,201,186,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] hover:brightness-[1.05]"
           style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
         >
           {t.cta} →

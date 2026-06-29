@@ -25,7 +25,7 @@ export default function MeccsekPage() {
             <span className="size-2 rounded-full bg-[#34C759]" />
             {status === 'ready' ? `Élő adatok · frissítve ${freshness(lastUpdated)}` : status === 'loading' ? 'Betöltés…' : 'Offline — utolsó állás'}
           </span>
-          <button onClick={() => void refresh()} className="text-[11px] font-semibold text-[#0D3331]/50">
+          <button onClick={() => void refresh()} className="tap text-[11px] font-semibold text-[#0D3331]/50 hover:text-[#007E73]">
             ⟳ frissítés
           </button>
         </div>

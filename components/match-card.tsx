@@ -69,8 +69,8 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
   const statusChip = chipFor(status, Boolean(savedPred), Boolean(savedWiz))
 
   return (
-    <div className="mb-3 overflow-hidden rounded-[18px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
-      <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center gap-[10px] px-4 py-[14px] text-left">
+    <div className="mb-3 overflow-hidden rounded-[18px] bg-white surface-card">
+      <button onClick={() => setExpanded((v) => !v)} className="tap flex w-full items-center gap-[10px] px-4 py-[14px] text-left hover:bg-[#F7FBFA]">
         <span
           className="w-[54px] flex-none text-[11px] font-extrabold"
           style={{ color: status === 'open' && countdown(fixture).includes('perc!') ? '#FF9500' : locked ? 'rgba(13,51,49,0.4)' : '#007E73' }}
@@ -140,7 +140,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
                     key={p}
                     onClick={() => pickWiz(p)}
                     disabled={locked}
-                    className={`rounded-[12px] px-1 py-[10px] text-center ${on ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331]'}`}
+                    className={`tap rounded-[12px] px-1 py-[10px] text-center ${on ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331] hover:border-[#bfe4df]'}`}
                   >
                     <div className="text-[11px] font-black">{p}</div>
                     <div className="tnum mt-px text-[15px] font-black">{odds ? odds[i].toFixed(2) : '—'}</div>
@@ -186,7 +186,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
 function Stepper({ value, onStep, disabled }: { value: number; onStep: (d: number) => void; disabled: boolean }) {
   const btn = disabled
     ? 'h-[26px] w-[44px] rounded-[9px] border border-[#EBF0F0] bg-[#F4F7F7] text-[16px] font-extrabold text-[#0D3331]/30'
-    : 'h-[26px] w-[44px] rounded-[9px] border border-[#DCEFEE] bg-white text-[16px] font-extrabold text-[#007E73]'
+    : 'tap h-[26px] w-[44px] rounded-[9px] border border-[#DCEFEE] bg-white text-[16px] font-extrabold text-[#007E73] hover:bg-[#F7FBFA]'
   return (
     <div className="flex flex-col gap-1">
       <button onClick={() => onStep(1)} disabled={disabled} className={btn}>

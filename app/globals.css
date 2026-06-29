@@ -142,6 +142,22 @@ body {
   }
 }
 
+/* calmer card surface — borrows the admin control-room restraint:
+   a hairline border + a soft shadow instead of a single heavy drop shadow */
+.surface-card {
+  border: 1px solid #d9e8e6;
+  box-shadow: 0 1px 3px rgba(13, 51, 49, 0.05);
+}
+
+/* subtle hover/press affordance for interactive rows, chips & tabs */
+.tap {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease;
+}
+
 /* hide scrollbars on horizontal chip/scope strips */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

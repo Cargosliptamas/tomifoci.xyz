@@ -110,8 +110,8 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex-1 rounded-[10px] px-1 py-[9px] text-[12px] font-extrabold ${
-                tab === id ? 'bg-[#EBF6F5] text-[#007E73]' : 'text-[#0D3331]/55'
+              className={`tap flex-1 rounded-[10px] px-1 py-[9px] text-[12px] font-extrabold ${
+                tab === id ? 'bg-[#EBF6F5] text-[#007E73]' : 'text-[#0D3331]/55 hover:bg-[#F4F7F7]'
               }`}
             >
               {label}

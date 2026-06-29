@@ -56,7 +56,7 @@ export default function ProfilPage() {
 
         <FavoritePicker current={favTeam ?? null} onPick={setFavorite} />
 
-        <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+        <div className="overflow-hidden rounded-[16px] bg-white surface-card">
           <NotificationsRow />
           <PinRow player={me} community={session?.community ?? 'hu'} />
           <LanguageRow session={session} />
@@ -66,7 +66,7 @@ export default function ProfilPage() {
 
         <button
           onClick={logout}
-          className="mt-4 w-full rounded-[14px] border border-[#f3c9c6] bg-white py-[14px] text-[14px] font-extrabold text-[#FF3B30]"
+          className="tap mt-4 w-full rounded-[14px] border border-[#f3c9c6] bg-white py-[14px] text-[14px] font-extrabold text-[#FF3B30] hover:bg-[#fff5f4]"
         >
           Kijelentkezés
         </button>
@@ -114,7 +114,7 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
   }
 
   return (
-    <div className="mb-[14px] rounded-[16px] bg-white p-4 shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+    <div className="mb-[14px] rounded-[16px] bg-white p-4 surface-card">
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-extrabold">⭐ Kedvenc csapat</span>
         {locked ? (
@@ -140,8 +140,8 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
               key={team}
               disabled={busy}
               onClick={() => pick(team)}
-              className={`flex items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left text-[13px] font-bold ${
-                team === current ? 'border-[#14a08c] bg-[rgba(20,160,140,0.1)]' : 'border-[#DCEFEE] bg-white'
+              className={`tap flex items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left text-[13px] font-bold ${
+                team === current ? 'border-[#14a08c] bg-[rgba(20,160,140,0.1)]' : 'border-[#DCEFEE] bg-white hover:border-[#bfe4df]'
               }`}
             >
               <span>{flag(team)}</span>
@@ -194,11 +194,11 @@ function SettingsRow({
   return (
     <div className="border-b border-[#EBF6F5] last:border-b-0">
       {href ? (
-        <Link href={href} className={headerCls}>
+        <Link href={href} className={`${headerCls} tap hover:bg-[#F7FBFA]`}>
           {inner}
         </Link>
       ) : onClick ? (
-        <button type="button" onClick={onClick} className={headerCls}>
+        <button type="button" onClick={onClick} className={`${headerCls} tap hover:bg-[#F7FBFA]`}>
           {inner}
         </button>
       ) : (

@@ -34,12 +34,12 @@ export default function TabellaPage() {
       <PageHeader eyebrow="Rangsorok" title="Tabella" />
       <div className="mx-auto max-w-[600px] px-[18px] pt-4">
         {/* mode switch */}
-        <div className="mb-4 flex rounded-[14px] bg-white p-1 shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+        <div className="mb-4 flex rounded-[14px] bg-white p-1 surface-card">
           {MODES.map((m) => (
             <button
               key={m.id}
               onClick={() => setMode(m.id)}
-              className={`flex-1 rounded-[10px] px-1 py-[10px] text-[12px] font-extrabold ${mode === m.id ? '' : 'text-[#0D3331]/60'}`}
+              className={`tap flex-1 rounded-[10px] px-1 py-[10px] text-[12px] font-extrabold ${mode === m.id ? '' : 'text-[#0D3331]/60'}`}
               style={mode === m.id ? { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' } : undefined}
             >
               {m.icon} {m.label}
@@ -68,7 +68,7 @@ function GroupBoard({ state }: { state: GameState | null }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {tables.map(({ group, rows }) => (
-          <div key={group} className="overflow-hidden rounded-[14px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+          <div key={group} className="overflow-hidden rounded-[14px] bg-white surface-card">
             <div className="flex items-center justify-between border-b border-[#EBF6F5] bg-[#f6faf9] px-[14px] py-[10px]">
               <span className="text-[13px] font-black">{group} csoport</span>
               <span className="text-[10px] font-bold text-[#0D3331]/40">GK · PONT</span>
@@ -100,7 +100,7 @@ function GroupBoard({ state }: { state: GameState | null }) {
       <div className="mb-[10px] mt-5 text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
         🟠 LEGJOBB HARMADIKOK · 8 továbbjutó hely
       </div>
-      <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">
+      <div className="overflow-hidden rounded-[16px] bg-white surface-card">
         {thirds.map((r, i) => (
           <div
             key={`${r.group}-${r.team}`}
@@ -150,8 +150,8 @@ function TipBoard({
           <button
             key={s.id}
             onClick={() => setScope(s.id)}
-            className={`flex-none whitespace-nowrap rounded-full px-4 py-[9px] text-[13px] font-bold ${
-              scope === s.id ? '' : 'border border-[#DCEFEE] bg-white text-[#0D3331]/70'
+            className={`tap flex-none whitespace-nowrap rounded-full px-4 py-[9px] text-[13px] font-bold ${
+              scope === s.id ? '' : 'border border-[#DCEFEE] bg-white text-[#0D3331]/70 hover:border-[#bfe4df]'
             }`}
             style={scope === s.id ? { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' } : undefined}
           >

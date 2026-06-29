@@ -5,7 +5,7 @@ import type { WizardRankRow, SwissStanding } from '@/lib/types'
 import { PlayerHistoryModal } from '@/components/player-history-modal'
 
 export function Board({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_4px_16px_rgba(13,51,49,0.06)]">{children}</div>
+  return <div className="overflow-hidden rounded-[16px] bg-white surface-card">{children}</div>
 }
 
 export function Row({
@@ -22,7 +22,9 @@ export function Row({
   const isMe = name === me
   return (
     <div
-      className="flex items-center gap-[10px] border-b border-[#EBF6F5] px-4 py-3 text-left last:border-b-0"
+      className={`tap flex items-center gap-[10px] border-b border-[#EBF6F5] px-4 py-3 text-left last:border-b-0 ${
+        onPlayer && !isMe ? 'hover:bg-[#F7FBFA]' : ''
+      }`}
       style={isMe ? { background: 'rgba(20,160,140,0.1)', borderLeft: '3px solid #14a08c' } : undefined}
       role={onPlayer ? 'button' : undefined}
       onClick={onPlayer ? () => onPlayer(name) : undefined}

@@ -21,7 +21,7 @@ export function LiveCard({ fixture }: { fixture: Fixture }) {
   const { result, pred, wiz, earned } = useMatchView(fixture)
   const [open, setOpen] = useState(false)
   return (
-    <div onClick={() => setOpen(true)} className="broadcast-dark mb-2 cursor-pointer rounded-[18px] p-4 shadow-[0_12px_30px_rgba(12,77,73,0.3)]">
+    <div onClick={() => setOpen(true)} className="broadcast-dark tap mb-2 cursor-pointer rounded-[18px] p-4 shadow-[0_12px_30px_rgba(12,77,73,0.3)] hover:brightness-[1.05]">
       {open && <MatchModal fixture={fixture} live onClose={() => setOpen(false)} />}
       <div className="flex items-center justify-between text-[11px] font-extrabold tracking-[0.06em]" style={{ color: '#9fe6dd' }}>
         <span>{fixture.group && fixture.group !== '–' ? fixture.group.toUpperCase() : (fixture.label ?? 'MECCS')}</span>
@@ -44,7 +44,7 @@ export function FinishedCard({ fixture }: { fixture: Fixture }) {
   const total = earned ? earned.pts : 0
   const [open, setOpen] = useState(false)
   return (
-    <div onClick={() => setOpen(true)} className="broadcast-finished mb-3 cursor-pointer rounded-[18px] px-4 py-[14px]">
+    <div onClick={() => setOpen(true)} className="broadcast-finished tap mb-3 cursor-pointer rounded-[18px] px-4 py-[14px] hover:brightness-[1.05]">
       {open && <MatchModal fixture={fixture} live={false} onClose={() => setOpen(false)} />}
       <div className="flex items-center justify-between text-[11px] font-extrabold tracking-[0.06em]" style={{ color: '#9fe6dd' }}>
         <span>{fixture.group && fixture.group !== '–' ? fixture.group.toUpperCase() : (fixture.label ?? 'VÉGE')} · VÉGE</span>

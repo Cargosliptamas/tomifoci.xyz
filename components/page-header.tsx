@@ -18,7 +18,7 @@ export function PageHeader({ eyebrow, title }: { eyebrow: string; title: string 
       </div>
       <Link
         href="/profil"
-        className="flex items-center gap-2 rounded-full bg-white py-[5px] pl-3 pr-[6px] shadow-[0_2px_8px_rgba(13,51,49,0.06)]"
+        className="tap flex items-center gap-2 rounded-full border border-[#DCEFEE] bg-white py-[5px] pl-3 pr-[6px] shadow-[0_1px_3px_rgba(13,51,49,0.05)] hover:bg-[#F7FBFA]"
       >
         <span className="tnum text-[13px] font-extrabold">{pts} pt</span>
         <span
