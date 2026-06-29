@@ -17,7 +17,7 @@ export default function MeccsekPage() {
 
   return (
     <>
-      <PageHeader eyebrow="MATCH-DAY HUB" title="Meccsek" />
+      <PageHeader eyebrow="TIPPELÉS" title="Tippjeim" />
       <div className="mx-auto max-w-[600px] px-[18px] pt-4">
         {/* Data freshness */}
         <div className="mb-3 flex items-center justify-between rounded-[12px] border border-[#DCEFEE] bg-white px-[13px] py-2">
