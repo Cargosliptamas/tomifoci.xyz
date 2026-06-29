@@ -86,19 +86,35 @@ export function isFavoriteMatch(state: GameState | null, player: string, fixture
   return fixture.home === team || fixture.away === team
 }
 
-// Buckets the fixtures into feed sections for the player home screen.
+// Buckets the fixtures into feed sections for the player home screen. `open` = still
+// tippable (before kickoff); `locked` = kicked off but unresolved; kept separate so the
+// Tippjeim feed can lead with the genuinely-tippable matches instead of old locked ones.
 export function bucketFixtures(state: GameState | null, fixtures: Fixture[], now = Date.now()) {
   const live: Fixture[] = []
   const open: Fixture[] = []
+  const locked: Fixture[] = []
   const finished: Fixture[] = []
   for (const f of fixtures) {
     const s = statusOf(state, f, now)
     if (s === 'live') live.push(f)
     else if (s === 'finished') finished.push(f)
-    else open.push(f) // open + locked both shown in the tippable list (locked rendered read-only)
+    else if (s === 'locked') locked.push(f)
+    else open.push(f)
   }
   const byKo = (a: Fixture, b: Fixture) => kickoffMs(a) - kickoffMs(b)
-  return { live: live.sort(byKo), open: open.sort(byKo), finished: finished.sort(byKo).reverse() }
+  // Open list: upcoming kickoffs first (soonest), then always-open (test) past games.
+  const openSort = (a: Fixture, b: Fixture) => {
+    const af = kickoffMs(a) >= now
+    const bf = kickoffMs(b) >= now
+    if (af !== bf) return af ? -1 : 1
+    return af ? kickoffMs(a) - kickoffMs(b) : kickoffMs(b) - kickoffMs(a)
+  }
+  return {
+    live: live.sort(byKo),
+    open: open.sort(openSort),
+    locked: locked.sort(byKo).reverse(),
+    finished: finished.sort(byKo).reverse()
+  }
 }
 
 export { MATCH_BY_ID }

@@ -12,7 +12,8 @@ export default function MeccsekPage() {
   const { state, status, lastUpdated, refresh } = useGame()
 
   const buckets = useMemo(() => bucketFixtures(state, MATCHES), [state])
-  const openSoon = buckets.open.slice(0, 24)
+  const openSoon = buckets.open // all still-tippable matches (soonest first)
+  const lockedRecent = buckets.locked.slice(0, 8)
   const finishedRecent = buckets.finished.slice(0, 10)
 
   return (
@@ -51,11 +52,24 @@ export default function MeccsekPage() {
           </section>
         )}
 
-        {/* MA · TIPPELHETŐ */}
+        {/* TIPPELHETŐ — all still-open matches */}
         {openSoon.length > 0 && (
           <section>
-            <div className="mb-[10px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">TIPPELHETŐ</div>
+            <div className="mb-[10px] flex items-center justify-between">
+              <span className="text-xs font-black tracking-[0.06em] text-[#0D3331]/50">TIPPELHETŐ</span>
+              <span className="text-[11px] font-bold text-[#007E73]">{openSoon.length} nyitott meccs</span>
+            </div>
             {openSoon.map((f) => (
+              <MatchCard key={f.id} fixture={f} />
+            ))}
+          </section>
+        )}
+
+        {/* LEZÁRVA — kicked off, result pending (read-only) */}
+        {lockedRecent.length > 0 && (
+          <section className="mt-2">
+            <div className="mb-[10px] mt-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">🔒 LEZÁRVA</div>
+            {lockedRecent.map((f) => (
               <MatchCard key={f.id} fixture={f} />
             ))}
           </section>
