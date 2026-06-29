@@ -1,11 +1,14 @@
 # Classic → Rewrite — Player-Side Feature Parity Audit
 
-> Audit date: 2026-06-28. Scope: **player-facing** features only (admin excluded except where it gates a player feature).
-> Classic source: `/Users/tamasvarga/Documents/GitHub/Vb_Tippjatek_2026/` (vanilla JS + Convex/Neon).
-> New app audited: `/Users/tamasvarga/Documents/GitHub/tomifoci.xyz/` (root Next.js rewrite).
-> Status legend: ✅ present · 🟡 partial / cosmetically-present-but-broken · ❌ missing.
+> **Round 2 — re-audit date 2026-06-29.** Supersedes the Round-1 matrix (2026-06-28).
+> Scope: **player-facing** features only (admin in `CLASSIC_PARITY_ADMIN.md`).
+> Classic source: `/Users/tamasvarga/Documents/GitHub/Vb_Tippjatek_2026/` (vanilla JS + Convex).
+> New app audited: `/Users/tamasvarga/Documents/GitHub/tomifoci.xyz/` (root Next.js rewrite, branch `rewrite`).
+> Status legend: ✅ present (works) · 🟡 partial / present-but-reduced-or-misleading · ❌ missing.
 
-**Critical structural finding (sets the tone for the whole audit):** the spec-faithful pure engine in `lib/engine/{scoring,wizard,swiss,match-meta}.ts` is **dead code** — the only symbol imported from it anywhere is `isKickedOff` (in `lib/guard.ts:2`). The live read path is `api/state/route.ts` → `lib/db.ts` → `lib/client-state.ts`, which **reimplements only tip scoring** and serves the **Wizard and Swiss leaderboards from static snapshots migrated from Convex** — they never recompute. There is **no live data pipeline** (no cron/poll/recompute route, no `vercel.json`), so odds, live scores, events and lineups are never refreshed. Two of the "three games" are visually complete but functionally frozen.
+**What changed since Round 1 (the headline):** the three "dead code / static snapshot" findings are **resolved**. `api/state` → `lib/db.ts:loadPublicStateFromNeon` → `lib/client-state.ts:buildPublicState` now runs the real engines on **every read**: Wizard (`computeLiveWizardRankings` → repairOdds → score → rank, with mirror gap-fill), Swiss (`computeLiveSwiss` → full pairing/score/tiebreak/freeze), and tip scoring. The knockout bracket is wired to real `koTeams` + `results` (no longer hardcoded). A **live pipeline exists**: `api/cron/poll` (every 15 min, `vercel.json`) → `lib/livescore.ts:runLiveScorePoll` writes pre-match **odds** and **FT results**; `api/match/[id]` → `fetchMatchCentre` returns real per-match **events + lineups**. PWA (`sw.js` + manifest), change-PIN, favourite switch-window enforcement, and a full Rules/Szabályok screen with changelog are all real now.
+
+**The Round-2 story** is no longer "frozen games" — it is (a) **live in-progress scores are still not polled** (cards show `–:–` until FT), (b) a **wizard odds-repair field-shape bug** plus a never-written `kickoffOdds` snapshot, (c) **data computed but never rendered** (swiss pairings/log, private-league rankings), (d) a **dead push pipeline**, and (e) **no PIN throttle** (regression).
 
 ---
 
@@ -13,14 +16,14 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Bottom-bar / sidebar nav | Up to 9 destinations: Ranglista, Tippjeim, Wizard, Párbaj, Meccs Center, Csoportok, Profilom, Névjegy, Admin (+ "Több" drawer on mobile) | 🟡 Only 3 items: Meccsek, Tabella, Profil (`player-nav.tsx`). Wizard/Swiss folded into Tabella tabs; Match-centre folded into Meccsek; no About/Admin in player nav | New screens needed for About; Wizard/Swiss are sub-tabs (acceptable consolidation) |
-| `/brackets` route | n/a (bracket lives under Csoportok sub-nav) | 🟡 Route exists & renders but **no link anywhere** — unreachable from UI; content is fake (see Bracket section) | Wire a nav entry or remove |
-| Header (logo, title, player badge) | Logo + "Tomifoci" + `#playerBadge` "Válassz játékost" → login modal | ✅ `page-header.tsx` present | — |
-| Welcome / beta landing splash | `#wOverlay`: eyebrow, phone mockups, "app hamarosan", **interest lead form** (name/contact/message → `leads:submitInterest`), "Tovább/Kihagyom" | 🟡 Landing `page.tsx` exists with HU/EN copy toggle, but **no lead-capture form** | Add interest form + `leads` endpoint if desired |
-| Login modal + player picker | `#playerOverlay`: filter input, player list, PIN row (4-digit), biometric row, logout link | ✅ `login/page.tsx` — player picker + PIN. ❌ no biometric (Face ID / Touch ID) row | Biometric WebAuthn unlock missing |
-| Empty / loading placeholders | "Betöltés…", "Válassz játékost." per tab | ✅ present in screens | — |
-| Toast system | `showToast` 2.5s `#toast` | ✅ used across save actions | — |
-| Escape-to-close modals/drawer | Esc closes match/history/player/fav overlays + drawer | 🟡 modal close exists; not audited for full Esc-key coverage | minor |
+| Bottom-bar / sidebar nav | Up to 9 destinations + "Több" drawer | 🟡 **5 items now** (Meccsek, Tabella, Wizard, Párbaj, Profil) — `player-nav.tsx:6-12`. Csoportok folded into Tabella, Match-centre into Meccsek; Szabályok & brackets not in nav | Add Szabályok/brackets entry if wanted (acceptable consolidation) |
+| `/brackets` route | n/a (under Csoportok sub-nav) | 🟡 Route real & wired, but only linked from `parbaj/page.tsx:33` — not a nav item | Surface in nav |
+| Header (logo, title, player badge) | Logo + title + player badge | ✅ `page-header.tsx` | — |
+| Welcome / beta splash + **interest lead form** | `#wOverlay` with name/contact/message → `leads:submitInterest` | 🟡 Landing `page.tsx` with HU/EN copy toggle + card preview; **"Jelezz érdeklődést" is a dead `<Link href="/login">`** — no form/endpoint (`page.tsx:102`) | Add interest form + `leads` endpoint if desired |
+| Login modal + player picker | Filter, list, 4-digit PIN, biometric row | ✅ `login/page.tsx` picker + search + PIN keypad. ❌ biometric row is **static label only** (`login/page.tsx:199`, no WebAuthn) | Implement or delete the biometric label |
+| Empty / loading placeholders | "Betöltés…", "Válassz játékost." | ✅ skeleton + empty states (`meccsek/page.tsx:39,74`) | — |
+| Toast system | `showToast` 2.5s | 🟡 player surfaces use **inline button states** (`match-card.tsx:178`), no toast; toast only in admin | minor UX diff |
+| Escape-to-close modals/drawer | Esc closes overlays | ❌ no `keydown`/Escape handler; modal closes on backdrop/✕ only (`match-modal.tsx:67`) | minor |
 
 ---
 
@@ -28,11 +31,12 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Player select + 4-digit PIN | Throttled `auth:checkPlayerPin`, returns `{ok,retryAfterMs}`; never auto-login on network error (anti-impersonation) | ✅ `api/auth/player-pin` claim-on-first-login | verify throttle parity |
-| PIN cache / TTL | `vb26_vp_{name}`, PIN_TTL 3 days, TOTP_TTL 24h | 🟡 `lib/session.ts` session exists; TTL semantics not matched to classic | low impact |
-| Face ID / Touch ID (biometric) | `bioSupported/bioRegister/bioUnlock` platform WebAuthn; setup buttons in login + profile | ❌ absent | new feature |
-| Change PIN | Profile card: old/new/confirm, validation, `auth:setPlayerPin` hashed | ❌ Profile "PIN módosítása" row is **inert** (no onClick) | endpoint + handler |
-| Logout | `logoutPlayer` clears PIN cache + player | ✅ works | — |
+| Player select + 4-digit PIN | Throttled `checkPlayerPin`, never auto-login on net error | ✅ `api/auth/player-pin` claim-on-first-login (`login/page.tsx:55-89`) | — |
+| **Throttle / anti-impersonation** | `retryAfterMs` backoff on repeated failures | ❌ **Regression** — no attempt counter anywhere in `player-pin`/`change-pin`; unlimited guesses. Combined with claim-on-first-login, an unclaimed name's PIN can be set by anyone | Add rate limiting / lockout |
+| PIN cache / TTL | `vb26_vp_{name}`, PIN_TTL 3 days | 🟡 `lib/session.ts` localStorage PIN reused on writes; no TTL/expiry | low impact |
+| Face ID / Touch ID (biometric) | `bioRegister`/`bioUnlock` WebAuthn | ❌ absent (and falsely advertised, see A) | new feature |
+| Change PIN | old/new/confirm → `setPlayerPin` | ✅ **now wired end-to-end** — `profil/page.tsx:231-322` → `api/auth/change-pin` → `changePlayerPinInNeon` | (no throttle on old-PIN check) |
+| Logout | clears PIN cache + player | ✅ `clearSession()` (`profil/page.tsx:27-30`) | — |
 
 ---
 
@@ -40,24 +44,24 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Score stepper +/- | `predStepper`/`bump`, value clamped **0–20**, `:` separator, two inputs per match | ✅ `Stepper` clamped 0–20 (`match-card.tsx:39`); server re-clamps (`predictions/route.ts:37`) | — |
-| Save behaviour | **Per-match auto-save** on change; reads both live inputs; toast "Tipp elmentve ✓" | 🟡 Saves via single **"Mentés"** button (prediction + wizard together), not per-field auto-save; functionally equivalent | minor UX diff |
-| Point bands 5/3/2/1/0 | exact 5 · GD+winner 3 · winner+one-goals 2 · outcome 1 · wrong 0 (`calcPts`) | ✅ live path `client-state.ts:318` correct (engine `scoring.ts:19` correct but unused) | — |
-| Draw special-case scoring | both-draw non-exact (2-2 vs 3-3) = 3; 2/1 bands don't apply to draws | ✅ handled in live `calcPts` | — |
-| 90-minute-only result | regulation result scores; ET/pens ignored | ✅ scoring uses stored result; documented | — |
-| Favourite ×2 doubling | raw×2 on matches favourite plays; `getActiveFav` stage logic; live deltas doubled | ✅ UI badge `⭐×2` + doubling in scoring (`client-state.ts:223`, `getActiveFav`) | — |
-| +3 advance/qualification bonus | Auto **+3** per round favourite advances (server `bracket.ts::autoUpdateBracket`); shown in totals | ❌ **Not automatic.** Only manual admin bonus rows; "+3 bónusz" card text is explanatory only; **and the admin bonus endpoint doesn't exist (404)** | Needs bracket-driven bonus recompute |
-| Kickoff lock | Client + server lock at `bpParse(m.date)`; locked card shows read-only `rbox` | ✅ `guard.ts:24 isKickedOff` (INV-10) + client `statusOf`; test ids never lock | — |
-| Locked-card display | Full team names + read-only score, `.pend` if no result | ✅ broadcast/finished cards render tip + earned | — |
-| Card ribbons (group badge, ⭐, countdown, venue) | group `gbadge`/test/KO tag, kickoff time, countdown pill, venue, ⭐ when fav plays | 🟡 cards show core info; not every chip (countdown pill, venue) confirmed | cosmetic gaps |
-| Odds ribbon on upcoming card | `1/X/2` from `matchOdds` | 🟡 odds come from migrated `apiCache` only; usually `—` (no poll) | depends on live pipeline |
-| Day-header grouping | `.day-hdr` by date; upcoming asc, past desc | 🟡 grouping present; ordering parity not fully verified | minor |
-| "Eredményeim" collapsible past | `<details>` collapsed, responsive grid, count | 🟡 partial | — |
-| Stats card (Összpont/Telitalálat/PPG/Tippelt) | 4 boxes from `playerTotals` | ✅ profile + tabella show pts/exact/PPG/predicted | — |
-| Swiss matchup teaser on pred tab | `swMatchupCard` (join CTA / pairing / bye / live "Te N:N Ellenfél"), dismissible per round | 🟡 match-card has static "♟ SVÁJCI" text only, no live matchup | depends on Swiss recompute |
-| "Daily meaningless stat" widget | `getDailyStat`/`fmtDailyStat` rotating daily at 6 AM | ❌ absent | nice-to-have |
-| No-favourite reminder card | Gold CTA to set favourite | 🟡 favourite set via profile; no inline pred-tab reminder | minor |
-| Cache-fix banner / button | `fixButtonPress` SW+cache wipe | ❌ no SW/cache to fix; not applicable | n/a (no PWA) |
+| Score stepper +/- (clamp 0–20) | client + server clamp | ✅ `match-card.tsx:42`; server `predictions/route.ts:39` | — |
+| Save behaviour | per-match auto-save on change | 🟡 single **"Mentés"** button saves prediction + wizard together (`match-card.tsx:54-67`) | minor UX diff |
+| Point bands 5/3/2/1/0 | `calcPts` | ✅ live `client-state.ts:484-499`, byte-identical to classic | — |
+| Draw special-case scoring | both-draw non-exact = 3 | ✅ handled in live `calcPts` | — |
+| 90-minute-only result | regulation result | ✅ poll writes `ft_score` (`livescore.ts:138`) | — |
+| Favourite ×2 doubling | raw×2 on fav matches, stage-aware | ✅ `client-state.ts:364-366,478` | — |
+| +3 advance/qualification bonus | auto +3 per round fav advances | 🟡 **Data-driven now** — summed from the `bonuses` table into all/vb/ko scopes (`client-state.ts:325-329`); admin bonus endpoint **works** (was 404). But **not auto-computed** from bracket advancement; card "+3 bónusz" copy is static | Add bracket-driven auto-bonus if full parity wanted |
+| Kickoff lock | client + server lock | ✅ `match-card.tsx:39` + `guard.ts:34 isKickedOff` (INV-10) | — |
+| Locked-card display | read-only score | ✅ `match-card.tsx:110-178` | — |
+| Card ribbons (group badge, ⭐, countdown, venue) | full chip set | 🟡 countdown + ⭐×2 present (`match-card.tsx:74-92`); **group badge & venue not shown** on collapsed card | cosmetic gaps |
+| Odds ribbon on upcoming card | `1/X/2` from `matchOdds` | 🟡 odds shown only inside expanded Wizard section, not as the bottom odds-ribbon | cosmetic |
+| Day-header grouping | `.day-hdr` per date | ❌ flat list, no per-day headers (`meccsek/page.tsx:55`) | minor |
+| "Eredményeim" collapsible past | `<details>` grid | ❌ no per-player collapsible results list | — |
+| Stats card (Összpont/Telitalálat/PPG/Tippelt) | 4 boxes | 🟡 profil shows pts·PPG·telitalálat (3, not 4-box) | minor |
+| Swiss matchup teaser on pred tab | live opponent/score teaser, dismissible | 🟡 static "a kör 8 meccsének alappontja számít" text only (`match-card.tsx:157`), no live matchup | depends on rendering swiss pairings (data exists) |
+| "Daily meaningless stat" widget | rotating daily at 6 AM | ❌ absent in player surfaces (data selected in `db.ts:172` but never rendered) | nice-to-have |
+| No-favourite reminder card | gold inline CTA | ❌ no inline pred-tab reminder; profil shows "Kedvenc: nincs" only | minor |
+| Cache-fix banner / button | `fixButtonPress` SW+cache wipe | 🟡 not on pred tab; cache clear lives in Profile now (PWA exists) | n/a inline |
 
 ---
 
@@ -65,19 +69,19 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| League opt-in gating | Strict `profile.active`; CTA "🪄 Belépek…"; join backfills prior base preds as picks | 🟡 `wizardProfiles{active,mirror}` surfaced; pick UI always shown; **no backfill** | — |
-| 1/X/2 pick UI | 3 buttons with live odds + Hazai/Döntetlen/Vendég labels; active = teal | ✅ picker in `match-card.tsx:133`; saved via `api/wizard` | — |
-| Odds display | live odds per outcome (or `–`) | 🟡 from `apiCache`; almost always `—` (no poll) | needs live odds feed |
-| Correct = odds, wrong = 0 | scored at pick-time odds | 🟡 logic exists in unused `wizard.ts`; **live path never scores wizard** | scoring frozen |
-| Odds clamp [1.10, 10.00] | clamp on compute | ✅ applied on **save** (`wizard/route.ts:27`) | OK on write side |
-| Odds repair chain (snapshot→cache→peer→1.10 floor) | `repairOdds` (WIZ-13) | ❌ `repairOdds` (`wizard.ts:39`) **never invoked**; null-odds picks stay `pending` forever | wire repair into recompute |
-| Varázslótanonc / mirror mode | base prediction auto-converts to 1/X/2 (3-1→1, 1-1→X, 0-1→2), retroactive, overridable | ❌ `pickFromScore` (`wizard.ts:20`) unused; no mirror/derive logic in live path | missing |
-| Mirror hints/suggestions on card | dashed-teal suggestion, override hints | ❌ absent | missing |
-| Locked / settled pick display | "🔒 Lezárt tipp @ odds", hit `+odds pt` / miss `0 pt` / `kizárva` | 🟡 modal shows pick chip; no odds-at-pick scoring shown live | depends on scoring |
-| Test-match exclusion | Wizard is WC-only (`stage==='test'` skipped) | 🟡 not verified; likely n/a | low |
-| Wizard stats card (Odds pont, Helyes, Tippelt, Pontosság) | from `state.wizardRankings` | 🟡 renders, but from **static snapshot** — never moves | frozen |
-| **Wizard leaderboard** | live rows from `wizardRankings` | 🟡 **Cosmetic** — `client-state.ts:60` returns migrated snapshot; new picks never recompute the board | needs `computeWizardScores` wired |
-| Leave league | red "Kilépés a Ligából" with confirm | ❌ no in-app control (settings rows inert) | missing |
+| League opt-in gating + backfill | strict `profile.active`; join backfills base preds | 🟡 `active`/`mirror` default **true**, admin-only; mirror gap-fill exists but **no player opt-in/backfill control** (`client-state.ts:127`) | add player toggle |
+| 1/X/2 pick UI | 3 buttons + live odds + labels | ✅ `match-card.tsx:135-150` → `api/wizard` | — |
+| Odds display | live odds per outcome | ✅ **now live** from `apiCache.odds` written by poll (`derive.ts:58`) | — |
+| Correct = odds, wrong = 0 | scored at pick-time odds | ✅ **now LIVE** — `wizard.ts:130-134`, invoked at `client-state.ts:186` | — |
+| Odds clamp [1.10, 10.00] | clamp on compute | ✅ on save (`api/wizard:28`) + engine (`wizard.ts:15`) | — |
+| Odds repair chain (snapshot→cache→peer→1.10 floor) | `repairOdds` (WIZ-13) | 🟡 **engine correct but two of four sources dead**: (1) **field-shape bug** — `repairOdds` reads `{home,draw,away}` (`wizard.ts:31`) but poll/cache/UI use `{h,x,a}` (`livescore.ts:147`, `derive.ts:61`) → cache branch always yields 0; (2) `kickoffOdds` snapshot **never written in prod** (only in a test). Peer + 1.10 floor still work | fix odds key shape; write a kickoff-odds snapshot |
+| Varázslótanonc / mirror mode | base pred auto-converts to 1/X/2 | ✅ **now works** — `pickFromScore` gap-fills mirror-on players (`client-state.ts:156-171`) | — |
+| Mirror hints/suggestions on card | dashed-teal suggestion | ❌ no on-card suggestion hint | missing |
+| Locked / settled pick display | "🔒 @ odds", hit `+odds pt` / miss `0 pt` / `kizárva` | 🟡 saved chip + live odds shown, but **no settled "+X.XX pt / kizárva" line** | add settled display |
+| Test-match exclusion | WC-only (id≥999 skipped) | ✅ `wizard.ts:27-29,119`; `client-state.ts:167` | — |
+| Wizard stats card | Odds pont / Helyes / Tippelt / Pontosság | ❌ `wizard/page.tsx` is leaderboard-only, no per-player stats card | add card |
+| **Wizard leaderboard** | live rows from `wizardRankings` | ✅ **now LIVE** (was frozen) — `wizard/page.tsx:18` reads live-computed rankings | — |
+| Leave league | red "Kilépés a Ligából" + confirm | ❌ no player-facing control | missing |
 
 ---
 
@@ -85,17 +89,17 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| 13 rounds × 8 matches | round labels group/KO; `SW_ROUND_LABEL` | 🟡 `SWISS_ROUNDS`/`match-meta.ts` define it but **unused at runtime** | dead code |
-| Auto-participation / enrolment | every player auto-in; join window through round 8 | 🟡 implied by snapshot; no runtime enrolment logic | — |
-| Matchup score = Σ base pred pts (0–40, no fav doubling) | computed per pairing | 🟡 in `swiss.ts`, unused | dead code |
-| Win 3 / draw 1-1 / loss 0 / bye 3 | match-point rules | 🟡 coded, unused | dead code |
-| Tiebreak chain (MP → total pred pts → H2H → Buchholz avg, byes excluded) | full chain | 🟡 coded in `swiss.ts`, unused | dead code |
-| Round-10 standings freeze | freeze logic | 🟡 coded, unused | dead code |
-| Live provisional overlay (`● élő`) | running subtotal until round end | ❌ absent | missing |
-| Pairings / matchup rows | `swMatchupRow` winner-highlight, bye/void/draw tags | 🟡 match-card "♟ SVÁJCI" is **static text only** | missing |
-| **Standings table** (#, MP, Gy-D-V, Tipp, Bh) | live from `state.swiss` | 🟡 `SwissBoard` (`tabella:209`) renders W-D-L + MP from **static migrated snapshot** | frozen |
-| Past-rounds archive + league events log | per-round toggles + 📣 Liga-események feed | ❌ absent | missing |
-| Removed-player handling | strikethrough "kiesett", 2-missed-round removal | 🟡 only as far as snapshot carried | frozen |
+| 13 rounds × 8 matches | `SW_ROUND_LABEL` | ✅ **now live** — `match-meta.ts SWISS_ROUNDS`, `swiss.ts:93` | — |
+| Auto-participation / enrolment | every player auto-in; join window | 🟡 **admin-driven** enrol (`api/admin/swiss` joinedRound/removedAtRound); engine honours it (`swiss.ts:65`), but not classic "everyone auto-enrols round 1" | — |
+| Matchup score = Σ base pred pts (0–40, no fav ×2) | per pairing | ✅ **now live** — `swiss.ts:27-37 basePtsFor` raw `calcPts` | — |
+| Win 3 / draw 1-1 / loss 0 / bye 3 | match-point rules | ✅ `swiss.ts:109-128` (bye only when round complete) | — |
+| Tiebreak chain (MP → pred pts → H2H → Buchholz avg, byes excl) | full chain | ✅ `swiss.ts:196-215,156-162` faithful | — |
+| Round-10 standings freeze | freeze logic | ✅ `client-state.ts:250` `frozen` when R10 fully resulted | — |
+| Live provisional overlay (`● élő`) | running subtotal | ❌ absent (`parbaj/page.tsx`/`standings-ui.tsx`) | missing |
+| Pairings / matchup rows | winner-highlight, bye/void tags | ❌ **`state.swissPairings` computed but UI never renders it** (`parbaj/page.tsx` shows standings only) | render pairings (data exists) |
+| **Standings table** (#, MP, Gy-D-V, Tipp, Bh) | live | ✅ **now LIVE** (was frozen) — `parbaj/page.tsx:30` → `SwissBoard` | — |
+| Past-rounds archive + league events log | per-round toggles + 📣 feed | ❌ **`state.swissLog` populated but no UI consumer** (`client-state.ts:77`) | render archive/log |
+| Removed-player handling | strikethrough "kiesett", 2-missed removal | 🟡 engine honours `removedAtRound` (admin-driven); no strikethrough UI | partial |
 
 ---
 
@@ -103,19 +107,19 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Tip scopes (all / vb / group / ko / test) | chip bar `🌐 Összes · ⚽ Teszt · 🏆 VB · 📊 Csoportkör · 🔥 Kiesés`; persisted | ✅ `SCOPES` (`tabella:18`) all 5; live `rankings['${scope}_Mindenki']` | — |
-| Test-league scope auto-hide | hidden after `testsPurged()` | 🟡 scope present; auto-hide-when-purged not verified | minor |
-| Private / named leagues | logged-in sees own leagues; "Mindenki" default; private detection | 🟡 backend computes per-league (`huLeagues`) but **UI only requests `_Mindenki`** — private boards computed-but-unexposed | wire league selector |
-| Podium top-3 (2-1-3 order, medals, count-up) | animated podium | 🟡 not confirmed present | cosmetic |
-| Row meta (counted · exact · PPG · predicted/total) | full meta line | ✅ PPG column wired (`tabella:176`); meta present | — |
-| **PPG column** | shown per row | ✅ present & wired | — |
-| ▲▼ rank-movement indicators | **NOT implemented in classic either** (only podium, live 🔴 delta, expander arrows) | ❌ also missing in new app (`Rank` only prints `n.`) | parity = both absent; low priority |
-| Live 🔴 delta (provisional, fav×2) | re-sorts rows while match live | 🟡 tip scoring is live but no explicit "🔴 +N élő" provisional row marker | minor |
-| Top-10 + expander + "me ±1" neighbours | default 10, expand full, jump to current player | 🟡 "me" highlight works; expander/neighbour logic not confirmed | minor |
-| Wizard board section | rows from `wizardRankings` | 🟡 cosmetic / static (see §D) | frozen |
-| Párbaj board section | rows from `state.swiss.rows` | 🟡 cosmetic / static (see §E) | frozen |
-| Logged-out CTA | "Csak nyilvános ranglista…" + Belépés | 🟡 public read works; specific CTA not confirmed | minor |
-| Tie/sort (pts → exact → PPG) | server order + live tiebreak | ✅ live tip path sorts correctly | — |
+| Tip scopes (all / vb / group / ko / test) | chip bar, persisted | ✅ live (`tabella/page.tsx:18-24`) | — |
+| Test-league scope auto-hide | hidden after purge | ✅ **now done** — `testInAll` cutoff (`client-state.ts:415,428`) | — |
+| Private / named leagues | per-league boards | 🟡 **computed but unexposed** — per-league rows built (`client-state.ts:444-449`) but UI hardcodes `${scope}_Mindenki` (`tabella/page.tsx:144`) | wire a league selector |
+| Podium top-3 (medals, count-up) | animated podium | ❌ flat rows, no podium | cosmetic |
+| Row meta (counted · exact · PPG · predicted) | full meta line | ✅ present | — |
+| **PPG column** | per row | ✅ `tabella/page.tsx:173-176` | — |
+| ▲▼ rank-movement indicators | **also absent in classic** | ❌ absent (parity) | low priority |
+| Live 🔴 delta (provisional, fav×2) | re-sorts live | 🟡 tip scoring is live but no explicit "🔴 +N élő" marker | minor |
+| Top-10 + expander + "me ±1" neighbours | default 10, expand, jump-to-me | 🟡 renders **all** rows (`tabella/page.tsx:167`), name-click → history; no expander/neighbour logic | minor |
+| Wizard board section | rows from `wizardRankings` | 🟡 **live** but on a separate Wizard page, not within Tabella | consolidation choice |
+| Párbaj board section | rows from `state.swiss` | 🟡 **live** but separate Párbaj page | consolidation choice |
+| Logged-out CTA | "Csak nyilvános ranglista…" + Belépés | ❌ not present in tabella | minor |
+| Tie/sort (pts → exact → PPG) | server + live tiebreak | ✅ `client-state.ts:466` | — |
 
 ---
 
@@ -123,16 +127,16 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Header + 4 stat boxes | avatar, name, leagues, Összpont/Telitalálat/PPG/Tippelt | ✅ present (tip rank live; Wiz/Swiss ranks from static snapshot) | — |
-| Favourite team card + picker | shows fav, pending/completed switch, round bonus; `openFavModal` | ✅ `FavoritePicker` → `api/favorites`; records team, flags `switched` | — |
-| **Favourite switch-window rules** | 3-phase: free until 2026-06-11 21:00 → one switch until 2026-06-28 21:00 (KO-effective) → locked | ❌ **Not enforced** (`favorites/route.ts:8`: "enforced in a later pass") | port phase logic |
-| Wizard participation toggles | "Részt veszek" + "Varázslótanonc" checkboxes → `saveWizardProfile` | ❌ profile settings rows are **inert** (no onClick) | handlers + endpoint |
-| Párbaj status line | "Állásod: N. hely · MP …" | 🟡 SVÁJCI rank tile from static snapshot | frozen |
-| 🔔 Notifications card + enable | `requestNotifications` permission flow + status text | ❌ "Értesítések" row inert; **no notifications system at all** | full feature |
-| 🔄 Cache clear card | `fixButtonPress`/`forceUpdate` (unregister SW, wipe caches) | ❌ "Gyorsítótár ürítése" row inert; no SW to clear | n/a (no PWA) |
-| Change PIN card | 3 inputs + validation → `auth:setPlayerPin` | ❌ "PIN módosítása" row inert | endpoint + handler |
+| Header + 4 stat boxes | avatar, name, leagues, 4 boxes | 🟡 3 **rank** tiles (TIPP/WIZ/SVÁJCI) + 1 summary line, not the 4-box layout | minor |
+| Favourite team card + picker | shows fav, pending/completed, bonus | ✅ `profil/page.tsx:57-155` → `api/favorites` | — |
+| **Favourite switch-window rules** | free → one-switch (KO-effective) → locked, with the exact dates | ✅ **now ENFORCED server-side** — `api/favorites/route.ts:13-72` (`free`<2026-06-11 21:00, `once`<2026-06-28 21:00, then `locked`, `pendingKO`) | (was the #5 Round-1 gap) |
+| Wizard participation toggles | "Részt veszek" + "Varázslótanonc" | ❌ **no UI card** (backend ready); worse, Rules screen claims "a Profilban kapcsolható" (`szabalyok/page.tsx:256`) — promises a missing control | add toggles |
+| Párbaj status line | "Állásod: N. hely · MP …" | ❌ only a SVÁJCI rank tile; no record/standings line | add line |
+| 🔔 Notifications card + enable | permission flow | 🟡 permission + subscribe work (`profil/page.tsx:325-391`) but **nothing ever sends a push** (dead pipeline, see L) | wire a sender |
+| 🔄 Cache clear card | unregister SW, wipe caches | ✅ **now works** — clears CacheStorage + localStorage, keeps session (`profil/page.tsx:416-453`) | — |
+| Change PIN card | 3 inputs + validation | ✅ **now works** (see B) | — |
 | Face ID / Touch ID setup | biometric register | ❌ absent | missing |
-| Language toggle (HU/EN) | path/community based (`/en`), no in-UI toggle | ❌ "Nyelv" row inert; login hardcodes `community:'hu'` → entire `en` backend path unreachable | missing |
+| Language toggle (HU/EN) | path/community | 🟡 toggle flips **data community** (`profil/page.tsx:393-414`), not UI language — in-app strings stay Hungarian | real i18n still missing |
 
 ---
 
@@ -140,17 +144,18 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Live section (🔴 Élőben) | real live via `liveScores` or `inLiveWindow` (kickoff→+130m fallback); hero card w/ progress bar, elapsed, goal-flash | 🟡 LiveCard uses **time-window** status (`MATCH_WINDOW_MS` 2.5h, `derive.ts:7`), **no real live feed** | no poll/live data |
-| "Élő adat átmenetileg nem elérhető" notice | shown when in-window but no data | ❌ absent | minor |
-| Easter-egg simulated live matches (Hungary fantasy, commentary ticker) | 3 time-based fake live games + 🎙️ commentary, 30s ticker | ❌ absent | nice-to-have |
-| Demo result cards | Hungarian fantasy demos with `showFrom` timing | ❌ absent | nice-to-have |
-| Next-48h section | `mcUpcomingCard` 2-col grid, VS, countdown, odds | 🟡 upcoming matches render; not the exact 48h grouping | partial |
-| Latest results (24h) / 24-72h / archive (>72h) | tiered result grids, collapsible archive | 🟡 finished cards render; tiered windows not replicated | partial |
-| Full schedule toggle | day-grouped 3-col grid | 🟡 not confirmed | partial |
+| Live section (🔴 Élőben) | real live via `liveScores`; hero card, progress, elapsed | 🟡 section renders but **time-window only** (kickoff→+2.5h, `derive.ts:37`); no real in-play feed | see next row |
+| **Live in-progress score** | live score during match | ❌ **Regression / gap** — `runLiveScorePoll` polls only odds (`/fixtures`) + FT history (`/matches/history`), **never `/matches/live.json`**; no live-score field in state; `fetchMatchCentre` fetches `status`/elapsed but it's **returned and never rendered** → cards show `–:–` until FT | poll live scores; render them |
+| "Élő adat átmenetileg nem elérhető" notice | shown when in-window, no data | ❌ absent | minor |
+| Easter-egg simulated live matches (commentary ticker) | fake live games + 🎙️ | ❌ absent | nice-to-have |
+| Demo result cards | Hungarian fantasy demos | ❌ absent | nice-to-have |
+| Next-48h section | 2-col grid, countdown, odds | 🟡 open matches lumped into one "TIPPELHETŐ" list, no distinct 48h section | partial |
+| Latest results tiers (24h / 24-72h / archive) | tiered grids, collapsible archive | 🟡 single "BEFEJEZETT" top-10, no tiers/archive | partial |
+| Full schedule toggle | day-grouped 3-col grid | ❌ absent | partial |
 | Live tab badge (dot on nav) | `updateLiveTabBadge` | ❌ absent | minor |
-| Cache-freshness indicator | "frissítve: {time}" reflecting real cache age | 🟡 "Élő adatok · frissítve X mp" shows **client fetch time**, not real data age (`game-provider.tsx:53`) | misleading |
-| Manual refresh ⟳ | re-poll | ✅ ⟳ re-fetches `/api/state` | — |
-| **Match detail modal** | ribbon, score breakdown (FT/ET/pens), odds, **Események tab** (goals/cards w/ pen `(B)`, own-goal `(ög)`, half separators), **Felállások tab** (XI, bench, sub arrows), refresh button | 🟡 modal has 2 tabs: "Összefoglaló" (tip/wiz/swiss) + "Odds" (usually `—`). **Events & lineups MISSING** — text says they appear "ha a LiveScore poll friss adatot ad" but no poll exists | events/lineups absent |
+| Cache-freshness indicator | reflects real cache age | 🟡 **misleading** — shows time since client `/api/state` fetch (`game-provider.tsx:57`), not real LiveScore data age | read real `apiCache` age |
+| Manual refresh ⟳ | re-poll | ✅ re-fetches `/api/state` | — |
+| **Match detail modal** | ribbon, FT/ET/pens breakdown, odds, **Események** (goals/cards w/ pen `(B)`, own-goal `(ög)`, half separators), **Felállások** (XI, bench, sub arrows), refresh | 🟡 **major upgrade** — Events tab real (goals/cards/subs, pen + ög suffixes; **no half/ET separators**), Felállások real (**XI only — no bench, no sub-minute arrows**), Odds tab real. ❌ no FT/ET/pen score breakdown (poll never writes pen/HT/ET), ❌ no refresh button. Finished-match events are **ephemeral** (60s cache, not persisted — go blank once the match leaves the LS history feed) | add breakdown, bench/arrows, persistence |
 
 ---
 
@@ -158,10 +163,10 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Sub-nav (Csoportállás / 3. helyezettek / Ágrajz) | 3 segmented tabs | 🟡 Csoport tab + bestThirds present; bracket separate/orphaned | — |
-| Group standings tables | API standings or `calcGroup`; columns #, Csapat, M, Gy, D, V, Rg, Rk, GK, Pt; top-2 ✓; live tint | ✅ **fully implemented & live** — `lib/groups.ts groupTables` from results; top-2 green, 3rd orange (`tabella:63 GroupBoard`) | — |
-| Live group tables | live-aware `calcGroup(gr,true)`, 🔴 ÉLŐ badge, "most játszik" dot | 🟡 computed from results; no live-match tinting (no live feed) | minor |
-| API-source banner + refresh | "🌐 Hivatalos API állás" + ↻ | 🟡 n/a (no API source) | — |
+| Sub-nav (Csoportállás / 3. helyezettek / Ágrajz) | 3 segmented tabs | 🟡 Csoport + bestThirds present in Tabella; bracket linked from Párbaj | — |
+| Group standings tables | columns #, Csapat, M, Gy, D, V, Rg, Rk, GK, Pt; top-2 ✓ | ✅ **live** — `groups.ts:7-47 groupTables`; top-2 green, 3rd orange | — |
+| Live group tables | live-aware tint, 🔴 ÉLŐ | 🟡 position-based tint from results; no in-progress-match tint (no live feed) | minor |
+| API-source banner + refresh | "🌐 Hivatalos API állás" | 🟡 n/a | — |
 
 ---
 
@@ -169,10 +174,11 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Third-place ranking table | best 8 of 12 thirds advance; pts→gd→gf→name; ✓/cut row, ⚖️ tie flag | ✅ **group-stage best-thirds works** — `bestThirds` in `groups.ts`, top-8 ✓ in `GroupBoard` | — |
-| Third-place qualification matrix (FIFA Annex C, 495 combos) | `THIRD_PLACE_MATRIX` maps which thirds fill which R32 slots | ❌ not implemented (only the ranking table, not the slot-assignment matrix) | missing |
-| Knockout bracket view | `computeBracketState(results)`; R32→Döntő; phase gate; decided/maybe/placeholder sides; auto-fill from real results | ❌ **`bracket.tsx` is 100% hardcoded fake data** ("Tomi", "Zsolt", fictional scores); zero wiring to `results`/`koTeams`; **and unreachable from nav** | full rebuild + wiring |
-| Bronze / 3rd-place match | id 103 in final round | ❌ part of fake bracket | missing |
+| Third-place ranking table | best 8 of 12; ✓/cut | ✅ `groups.ts:50-55 bestThirds`, top-8 ✓ | — |
+| Third-place qualification matrix (FIFA Annex C, 495 combos) | maps thirds → R32 slots | ❌ not ported (KO seeding comes from live `koTeams` poll instead) | missing |
+| Knockout bracket view | `computeBracketState(results)`; R32→Döntő, auto-fill | ✅ **now wired to real data** (was hardcoded fake) — `bracket.tsx:99-140 buildWcSide` uses `koTeams`+`results`, winner-advance; highlights player's fav team | (was the #7 Round-1 gap) |
+| Párbaj bracket | playoff bracket | 🟡 R0 seeded from frozen standings; later rounds placeholder-only (no playoff result feed yet) | — |
+| Bronze / 3rd-place match | id 103 | ❌ bracket renders final (104) only, no slot 103 | missing |
 
 ---
 
@@ -180,9 +186,9 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Player-history modal | click any player name → 3 tabs (Tippek/Wizard/Párbaj), read-only, fairness cutoff (only started matches) | ❌ absent — only the per-match modal exists; player names aren't clickable | full feature |
-| About / Rules screen | `render-about.js`: scoring tables, draw special rules, favourite rules + dates, Wizard guide, Párbaj guide, SVG infographics, PWA install guide | ❌ no dedicated screen; rules text only inside orphaned `/brackets` page + inline card hints | new About screen |
-| Changelog / version history | `CHANGELOG` array (v0.1→v1.3.17) rendered in About | ❌ absent | new feature |
+| Player-history modal | click any name → 3 tabs (Tippek/Wizard/Párbaj), fairness cutoff | 🟡 **now exists & names are clickable** (`player-history-modal.tsx`, invoked from Tabella & standings) but **single Tippek-style view — no Wizard/Párbaj tabs** | add the two tabs |
+| About / Rules screen | scoring tables, draw rules, favourite rules + dates, Wizard/Párbaj guides, PWA install guide | ✅ **now present & comprehensive** — `szabalyok/page.tsx` covers scoring, draw/ET, fav rules + exact dates, Wizard + odds-repair, Párbaj + tiebreak + freeze, bracket. 🟡 no PWA install guide | (was the #10 Round-1 gap) |
+| Changelog / version history | `CHANGELOG` array | ✅ **now rendered** — `lib/changelog.ts` → `szabalyok/page.tsx:330-355` (fresh 8-entry list) | — |
 
 ---
 
@@ -190,15 +196,15 @@
 
 | Feature / element | Classic behaviour | New app status | Where / what's needed |
 |---|---|---|---|
-| Push notifications (web-push, VAPID) | `notify.js`: subscribe, server push, permission flow | ❌ **completely absent** — no SW, manifest, web-push, VAPID, `Notification`/`pushManager` anywhere | full feature |
-| Kickoff alerts (30 min before) | SW `SCHEDULE_NOTIFICATION`, dedup by tag | ❌ absent | full feature |
-| Result notifications (dedup per device) | `notifyNewResult` localStorage dedup | ❌ absent | full feature |
-| Goal / red-card / HT / FT live notifications | per changelog v1.0.4 | ❌ absent | full feature |
-| Offline mode / stale banner | localStorage snapshot restore + "⚠️ Offline mód" banner + reconnect toast | 🟡 partial — `game-provider` sets `status:'offline'`, Meccsek shows "Offline — utolsó állás" banner; **no real offline cache/SW** (reload while offline gets nothing) | needs SW/cache |
-| Service worker / PWA install | `sw.js`, manifest, install guide | ❌ none | full feature |
-| HU/EN language | path/community (`/en`) with `t()` + `locales/en.json` fallback; landing copy | 🟡 landing has HU/EN **copy toggle only**; in-app hardwired to `hu` (`login/page.tsx:42`), `en` backend path unreachable | wire community selection |
-| Budapest-timezone pinning | all dates `Europe/Budapest` (+02:00) | 🟡 not verified; likely uses local/UTC | check parity |
-| Daily-stat rotation | epoch-based daily index | ❌ absent | nice-to-have |
+| Push notifications (web-push, VAPID) | subscribe + server push | 🟡 **subscribe path real** (`pwa-register.tsx:30-54` → `api/push/subscribe` stores subs; `lib/push.ts` real sender) but **`sendPush()` is never called** — subscriptions collected for nobody | wire a sender + VAPID env |
+| Kickoff alerts (30 min before) | SW schedule, dedup | ❌ absent (`cron/poll` emits no notifications) | full feature |
+| Result notifications (dedup) | `notifyNewResult` | ❌ absent | full feature |
+| Goal / red-card / HT / FT live notifications | per changelog | ❌ absent | full feature |
+| Offline mode / stale banner | snapshot restore + "⚠️ Offline mód" | 🟡 Meccsek header shows offline/freshness line (`game-provider.tsx:61`); no global stale banner | partial |
+| Service worker / PWA install | `sw.js`, manifest, install | ✅ **now real** — `public/sw.js` (cache-first shell, network-first `/api/*`, push handler) registered by `pwa-register.tsx:63`; `manifest.webmanifest` linked in `layout.tsx` | (was the #6 Round-1 gap) |
+| HU/EN language | path/community + `t()` | 🟡 landing copy bilingual; in-app Hungarian-only (community swaps data pool, not UI strings) | wire real i18n |
+| Budapest-timezone pinning | all dates `Europe/Budapest` | ✅ **verified** — kickoff ISO carries `+02:00`; fav windows use 21:00 CET (`match-meta.ts`, `favorites/route.ts:13`) | — |
+| Daily-stat rotation | epoch-based daily index | ❌ data selected (`db.ts:172`) but never rendered (orphaned read) | nice-to-have |
 
 ---
 
@@ -206,26 +212,34 @@
 
 | Feature | Classic | New app status |
 |---|---|---|
-| Result entry | server mutation | ✅ `api/admin/result` works (INV-11 merge-upsert, ADMIN_TOKEN) |
-| Players add/edit/delete, tip override, **bonus award/remove**, Swiss reshuffle/publish, manual poll, log rollback, backup restore | server mutations | ❌ **all 404** — only `api/admin/result` exists; the missing **bonus** endpoint is why the +3 advance bonus can't fire |
+| Result entry, prediction override, bonus award/remove, swiss publish/reshuffle, diagnostics | server mutations | ✅ **now real** — `api/admin/{result,override,bonus,swiss,diagnostics}` implemented. See `CLASSIC_PARITY_ADMIN.md` for wiring caveats (txn-log source mismatch, backup restore no-op, manual-poll 404, KO penalties dropped) |
 
 ---
 
 # Priority gaps (ranked by player impact)
 
-Ranked by how badly a real player would feel the absence. ❌ = missing, 🟡 = present-but-broken.
+Re-ranked for Round 2. The Round-1 top gaps (frozen Wizard/Swiss, fake bracket, missing PWA/Rules/change-PIN/fav-window) are **resolved**.
 
-1. **🟡 Wizard of ODDS leaderboard & scoring are frozen.** Picks save, but `computeWizardScores`/`repairOdds` are never invoked; the board is a static migrated snapshot. An entire game mode looks alive but doesn't score. (`client-state.ts:60`)
-2. **🟡 Swiss / Párbaj is entirely static.** No runtime pairing, matchup scoring, bye=3, Buchholz, tiebreaks, or round-10 freeze — all coded in `swiss.ts` but dead. Standings frozen at migration. Second full game mode non-functional.
-3. **❌ +3 advance bonus never fires automatically** — and the manual admin `bonus` endpoint returns 404. Favourite-driven scoring is incomplete; totals will be wrong once knockouts start.
-4. **❌ Match-centre live data, events & lineups missing.** No poll/cron exists, so live scores are time-window guesses and the modal's Események/Felállások tabs are permanently empty. Odds buttons show `—`.
-5. **❌ Favourite switch-window rules not enforced.** Free→once→locked phases ignored (`favorites/route.ts:8`); players can re-pick anytime, breaking fairness.
-6. **❌ Notifications / push / PWA entirely absent.** No service worker, manifest, web-push, kickoff/result/goal alerts. A core engagement loop of the classic app is gone.
-7. **❌ Knockout bracket is hardcoded fake data and unreachable.** `bracket.tsx` shows fictional players/scores, not wired to results; `/brackets` has no nav link.
-8. **❌ Profile actions are inert decoration** — PIN change, notifications enable, language, cache clear, Wizard toggles have no handlers.
-9. **❌ HU/EN language non-functional in-app.** Hardwired to `hu`; the whole `en` backend path is unreachable (landing toggle is cosmetic copy only).
-10. **❌ About/Rules screen, changelog, and player-history modal all missing** — players can't read the scoring rules, see version history, or inspect another player's tips.
+1. **❌ Live in-progress scores are never polled or rendered.** `runLiveScorePoll` does odds + FT history only — never `/matches/live.json`. Cards show `–:–` for the whole match, flipping to a score only when FT lands. `fetchMatchCentre` even fetches `status`/elapsed and throws it away. The single biggest remaining player-visible gap.
+2. **🟡 Wizard odds-repair is partly broken (real bug).** `repairOdds` reads `{home,draw,away}` but the live cache/UI use `{h,x,a}` (`wizard.ts:31` vs `livescore.ts:147`/`derive.ts:61`), so the cache branch always yields 0; and the `kickoffOdds` snapshot is never written in prod. Mirror-derived picks degrade to peer-most-recent or the 1.10 floor instead of true market odds.
+3. **🟡 Push pipeline is a dead end.** Subscriptions are collected but `sendPush()` is never invoked and the cron emits no notifications — enabling the 🔔 toggle does nothing. No kickoff/result/goal alerts at all.
+4. **❌ No PIN throttle / anti-impersonation (regression).** `player-pin`/`change-pin` allow unlimited guesses; with claim-on-first-login, an unclaimed name's PIN can be set by anyone.
+5. **❌ Swiss pairings, matchup rows, provisional overlay & league-events log not rendered.** `state.swissPairings` and `state.swissLog` are computed and in public state but no UI consumes them — Párbaj shows standings only, and the pred-tab matchup teaser is static text.
+6. **❌ Wizard participation/mirror & leave-league controls missing** — backend is ready, but the Profile has no toggle, and the Rules screen falsely promises one.
+7. **🟡 Private/named-league leaderboards computed but never requested** — UI only ever asks for `_Mindenki`; per-league boards exist but are unreachable.
+8. **🟡 Match modal still incomplete** — no FT/ET/pen score breakdown (poll never writes pens/HT/ET), no lineup bench or sub-minute arrows, no half separators, no refresh; finished-match events are ephemeral (not persisted).
+9. **❌ Biometric login advertised but absent** — `login/page.tsx:199` shows a "biometric available" label with zero WebAuthn behind it (misleading).
+10. **🟡/❌ Cosmetic & flavour gaps** — player-history modal lost its Wizard/Párbaj tabs; no podium / top-10 expander / day-grouping / results-tiers; daily-stat orphaned; FIFA third-place matrix + bronze match missing; misleading cache-freshness chip; no toast / Escape-to-close.
 
-**Honorable mentions (lower impact):** private/named-league leaderboards are computed but never requested by the UI (only `_Mindenki`); cache-freshness chip shows client fetch time not real data age (misleading); no biometric login; no daily-stat / easter-egg / demo-match flavour; offline support is a banner without a real cache. Note: ▲▼ rank-movement arrows are **absent in both** apps, so that is parity, not a gap.
+**What genuinely works end-to-end now:** tip predictions + live tip leaderboard (scopes, PPG, test auto-hide); **live Wizard scoring & leaderboard**; **live Swiss scoring, standings, tiebreaks & round-10 freeze**; group standings + best-thirds; **real knockout bracket** wired to results; favourite picker **with enforced switch-window**; change-PIN; login + PIN; **Rules/Szabályok screen + changelog**; **PWA/service worker + manifest**; the live odds + FT-result cron and the match modal's real events/lineups/odds.
 
-**What genuinely works end-to-end:** tip predictions (stepper, save, kickoff lock, favourite ×2, 5/3/2/1/0 incl. draw rules), the live tip leaderboard (scopes, PPG, me-highlight), group standings + best-thirds tables, the favourite picker (minus switch-window rules), login + PIN, and admin result entry.
+---
+
+## Status tally (player)
+
+| | ✅ | 🟡 | ❌ |
+|---|---|---|---|
+| Round 1 (approx) | ~17 | ~38 | ~33 |
+| **Round 2** | **30** | **29** | **26** |
+
+(Counts over the ~85 rows in sections A–L; M is context only. The shift is roughly +13 ✅, driven by live Wizard/Swiss/bracket, PWA, change-PIN, fav-window enforcement, Rules/changelog, and the live odds/FT/events pipeline.)

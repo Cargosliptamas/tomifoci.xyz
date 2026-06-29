@@ -1,13 +1,18 @@
 # Classic ↔ Rewrite — Admin Feature-Parity Audit
 
+> **Round 2 — re-audit date 2026-06-29.** Supersedes the Round-1 matrix (2026-06-28).
 > Scope: ADMIN console only. Classic source = `Vb_Tippjatek_2026/js/admin-*.js`, `js/game-actions.js`, `SPEC_DIGEST.md`.
 > New app = `tomifoci.xyz/app/admin/page.tsx` + `app/api/**`.
-> Status legend: ✅ present (works) · 🟡 partial (UI exists but no working backend, or feature reduced) · ❌ missing.
->
-> **Backend reality:** the new admin's `write()` helper POSTs to `/api/admin/{path}`. The **only** route that exists is
-> `/api/admin/result`. Every other path (`players`, `override`, `bonus`, `swiss`, `poll`, `log`, `backup`) resolves to a
-> non-existent route → the UI shows **"Backend még nincs bekötve"**. Auth model also differs: classic uses an admin **PIN**
-> (`/api/auth/admin-pin`, Neon+Convex, rate-limited) + optional **TOTP**; new admin uses a single **`ADMIN_TOKEN`** header.
+> Status legend: ✅ present (works) · 🟡 partial (UI exists but backend missing/reduced, or real backend mis-wired) · ❌ missing.
+
+**What changed since Round 1 (the headline):** Round 1's "only `/api/admin/result` exists" is **obsolete**. There are now **8 admin routes** — `result, players, override, bonus, swiss, log, backup, diagnostics` — plus `cron/poll`. Most route bodies are **genuinely implemented against Neon** and log to `txnlog`. The Round-2 problem is **wiring**, not absence:
+
+- **Fully real AND correctly wired (4):** `result` (minus penalties/logging), `override`, `bonus`, `diagnostics`.
+- **Real backend, partially/incorrectly wired (3):** `players` (only create+delete of 4 actions reach the UI), `swiss` (only publish+reshuffle of 4), `log` (read/rollback/clear all real but the **UI points at the wrong table** → rollback broken).
+- **Real backend, effectively unreachable from UI (1):** `backup` (restore sends only a filename, never file contents → no-op; the route's own export action is bypassed).
+- **UI button with no backing route (1):** manual poll → `/api/admin/poll` (404).
+
+Auth model still differs: classic uses an admin **PIN** + optional **TOTP**; new admin uses a single **`ADMIN_TOKEN`** header, validated only when a write fires.
 
 ---
 
@@ -15,23 +20,22 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Admin login | PIN → `POST /api/auth/admin-pin` (Neon primary, Convex fallback), `{ok, retryAfterMs}` | 🟡 `ADMIN_TOKEN` typed into a field; `setAuthed(true)` **client-side only**, no server verify until a write is attempted | No dedicated login route; token only checked by `/api/admin/result` | Decide auth model. If keeping token, add a verify endpoint; if PIN parity wanted, add `/api/auth/admin-pin` |
-| PIN rate limiting | `retryAfterMs` backoff on repeated failures | ❌ none (token equality only) | — | Add rate limiting / lockout to admin auth |
-| TOTP 2FA setup | `setup2fa` → QR (otpauth), `confirm2fa` verifies first code, stores `adminTotp` | ❌ missing entirely | — | Port `admin-totp.js` (RFC 6238 via Web Crypto) + secret storage + gated login |
-| TOTP test / disable | `test2fa` shows live code; `disable2fa` clears secret | ❌ missing | — | Same as above |
-| 2FA login gate | `ADMIN_2FA_ENABLED` flag (currently `false`), secret kept in settings | ❌ missing | — | Carry the dormant flag forward |
-| Face ID / Touch ID | `setupAdminBio`/`unlockAdminBio` (WebAuthn, local PIN unlock) | ❌ missing | — | Port biometric unlock if device-login parity wanted |
-| Logout | n/a (PIN persisted in localStorage) | ✅ `⏏` button resets `authed`/`token`/`section` | n/a | — |
+| Admin login | PIN → `POST /api/auth/admin-pin`, `{ok, retryAfterMs}` | 🟡 `ADMIN_TOKEN` typed in; `setAuthed(true)` is **client-only** (`page.tsx:157`), no server verify until a write fires; per-route `x-admin-token` check (`lib/admin.ts:8-24`) | No dedicated login route; token checked per write | Add a verify endpoint or keep token model |
+| PIN rate limiting | `retryAfterMs` backoff | ❌ none (token equality only) | — | Add lockout to admin auth |
+| TOTP 2FA setup/test/disable | `setup2fa`/`confirm2fa`/`test2fa`/`disable2fa` (RFC 6238) | ❌ missing entirely | — | Port `admin-totp.js`; `adminTotp` already redacted from state (`backup/route.ts:60`) but no feature |
+| 2FA login gate | `ADMIN_2FA_ENABLED` flag | ❌ missing | — | Carry dormant flag |
+| Face ID / Touch ID | `setupAdminBio`/`unlockAdminBio` | ❌ missing | — | Port if wanted |
+| Logout | n/a (PIN persisted) | ✅ `⏏` resets token/section (`page.tsx:214`) | n/a | — |
 
 ---
 
-## 2. Dashboard / Overview (new-only framing)
+## 2. Dashboard / Overview
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Stat tiles (players/preds/results/round) | No single dashboard; stats live in Version card | ✅ Tiles computed from `/api/state` | `/api/state` (read) ✅ | — |
-| System status panel | n/a | ✅ DB / scoring / swiss-round status | read-only | — |
-| Recent log (dashboard) | n/a | 🟡 reads `state.swissLog` (not the real txn log) | read-only | Back with real txn log |
+| Stat tiles (players/preds/results/round) | stats in Version card | ✅ tiles from `/api/state` (`page.tsx:287-301`) | `/api/state` ✅ | — |
+| System status panel | n/a | ✅ DB / scoring / swiss-round (`page.tsx:303-317`) | read-only | — |
+| Recent log (dashboard) | n/a | 🔴 reads **`state.swissLog`** (legacy Swiss table), not the real admin `txnlog` (`page.tsx:292`) | read-only | Point at `state._txnlog` (already in state) |
 
 ---
 
@@ -39,9 +43,9 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Full recompute (both modes) | `runRepairScores` → `game:repairAllScores` (re-mirror + 6-step recompute) | 🟡 "Pontok teljes újraszámítása" button just calls `loadState()` (state computed live on read) | ❌ no recompute route | If truth mutations don't auto-recompute, add an explicit recompute trigger; otherwise label as "refresh" |
-| Recompute-after-mutation (INV-03) | Server fires 6-step pipeline after every truth write | 🟡 derived state computed live in `buildPublicState`/`loadPublicStateFromNeon` on read; `/api/admin/result` upserts only | partial | Verify all derived tables (scores/rankings/wizard/swiss) reflect on read; confirm no stale persisted derived rows |
-| Name consolidation / merge | `runConsolidateName` → `game:renamePlayer` (re-stitch data under old name) | ❌ missing | — | Add rename/merge endpoint with INV-02 cascade |
+| Full recompute | `runRepairScores` → 6-step recompute | 🟡 "Pontok újraszámítása" just re-reads state (`page.tsx:308`); state derived live on read | ❌ no recompute route | OK if derive-on-read is trusted; else add explicit trigger |
+| Recompute-after-mutation (INV-03) | server fires 6-step pipeline | 🟡 derived live in `loadPublicStateFromNeon` on read; write routes upsert truth only | partial | Verify all derived reads reflect writes |
+| Name consolidation / merge | `runConsolidateName` (re-stitch q_-encoded names) | ❌ missing (diagnostics only **detects** encoded names, `diagnostics/route.ts:66-78`) | — | Add consolidation tool |
 
 ---
 
@@ -49,11 +53,7 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Add league | `addLeagueRow` + autosave | ❌ no league editor | — | Add league editor + settings write |
-| Rename league (remap members) | `saveAdminSettings` maps `leagueRename`, drops orphaned memberships | ❌ missing | — | Port rename-with-membership-remap |
-| Delete league | `✕` row remove + autosave | ❌ missing | — | — |
-| Private league toggle | `.lprv` checkbox → `privateLeagues[]` | ❌ missing (privacy not editable) | — | Port private-league flag |
-| League display | Editable rows | 🟡 read-only "LIGA" column in Players table (first league only) | read | — |
+| Add / rename(remap) / delete league, private toggle | `addLeagueRow`, `saveAdminSettings`, `.lprv` | ❌ no league editor; players show `leagues?.[0]` read-only (`page.tsx:385`) | ❌ | Add league editor + settings write |
 
 ---
 
@@ -61,13 +61,14 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Add player | `addPlayerQuick` (name + PIN + leagues) → autosave | 🟡 "+ Új játékos" → `write('players',{action:'create'})` — **no name/PIN input**, no backend | ❌ `/api/admin/players` missing | Add create endpoint + input form |
-| Edit player name | inline `.pname` → `saveAdminSettings` → `game:renamePlayer` cascade (INV-02) | 🟡 `✏️` button → `showToast('Backend még nincs bekötve')` | ❌ | Add rename endpoint w/ name cascade across all name-keyed tables |
-| Edit league membership | `.plg` checkboxes per player | ❌ missing | — | Add membership editor |
-| Set/change player PIN | `.ppin` → `auth:setPlayerPin` | ❌ missing (no PIN field) | ❌ | Add player-PIN endpoint |
-| Set new admin PIN | `newPinInp` → `auth:setAdminPin` | ❌ missing | ❌ | Add admin-PIN change endpoint |
-| Delete player (cascade) | `deletePlayer` — type-name confirm → `game:archiveAndDeletePlayer` (preds/favs/bonuses/account, Párbaj opponents get bye), **10-day** restore | 🟡 `🗑` → confirm → `write('players',{action:'delete'})`; **no backend**; copy says **30 days** (mismatch) | ❌ | Add delete-with-cascade endpoint; reconcile 10 vs 30-day window |
-| Restore deleted player | `loadDeletedPlayers` (`game:listDeletedPlayers`) + `restorePlayer` (`game:restoreDeletedPlayer`), shows `daysLeft` | 🟡 static "Nincs törölt játékos" placeholder; no load, no restore; says 30 days | ❌ | Add list + restore endpoints |
+| Add player | `addPlayerQuick` (name+PIN+leagues) | ✅ "+ Új játékos" → `players` `create` (`page.tsx:358`, route `:68-88`); server auto-names; **no name/PIN/leagues input**; logged | ✅ `players` | Add input form |
+| Edit player name (cascade INV-02) | inline → `renamePlayer` cascade | 🟡 **route real & full** (`players/route.ts:90-156`) but **UI ✏️ button is still a `showToast('Backend még nincs bekötve')` stub** (`page.tsx:388`) | ✅ route, ❌ wiring | Wire the ✏️ button to the route |
+| Edit league membership | `.plg` checkboxes | ❌ missing | — | Add membership editor |
+| Set/change player PIN | `.ppin` → `setPlayerPin` | ❌ no admin "set this player's PIN" (only player self-serve via `api/auth/*`) | ❌ | Add player-PIN endpoint |
+| Set new admin PIN | `newPinInp` → `setAdminPin` | ❌ missing | ❌ | Add admin-PIN change |
+| Delete player (cascade) | type-name confirm → cascade, **10-day** restore | ✅ `players` `delete` — real cascade (preds + name-keyed tables + swiss bye + roster + snapshot archive), logged (`page.tsx:400`, route `:169-218`). 🔴 **UI copy says "30 napig"** but route constant is `TEN_DAYS_MS` (`route.ts:26`) — **10 vs 30 mismatch** | ✅ `players` | Reconcile 10 vs 30-day text |
+| Restore deleted player | `restoreDeletedPlayer`, shows `daysLeft` | 🟡 **route real** (`players/route.ts:239-290`) but **UI never calls it** (no restore button) | ✅ route, ❌ wiring | Add restore button |
+| Deleted-players list | `loadDeletedPlayers` | 🟡 data exists (`deletedPlayers` table) but **UI hardcodes "Nincs törölt játékos."** (`page.tsx:416`); no list endpoint | ❌ list | Add list endpoint + binding |
 
 ---
 
@@ -75,11 +76,11 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Save result (90-min) | `saveResult`/`autoSaveResult` → merge-upsert (INV-11) | ✅ `Mentés` → `POST /api/admin/result` (`ON CONFLICT … DO UPDATE`, INV-11 honoured) | ✅ `/api/admin/result` | — |
-| Clear result | `clearResult` | ✅ `Törlés` → `/api/admin/result` `{action:'clear'}` (`DELETE … WHERE match_id`) | ✅ | — |
-| KO penalties (pen_h/pen_a) | `rph`/`rpa` inputs for `stage==='ko'` written with result | ❌ **no penalty inputs** in new Results UI; route accepts only `h`/`a` | 🟡 route lacks pen fields | Add `pen_h`/`pen_a` to UI + route + schema write |
-| Lock-aware match list | classic shows only `activeMR` (kickoff-aware) | 🟡 new shows first 60 by search, no lock filter | n/a | Optional — cosmetic |
-| Recompute on save | server recompute fires (INV-03) | 🟡 live-on-read; result route does not call a pipeline | partial | Confirm derived reads update post-save |
+| Save result (90-min) | `saveResult` merge-upsert (INV-11) | ✅ `Mentés` → `/api/admin/result` `ON CONFLICT DO UPDATE` (`page.tsx:476`, route `:48-52`) | ✅ `result` | — |
+| Clear result | `clearResult` | ✅ `Törlés` → `result` `clear` (DELETE by match_id) | ✅ | — |
+| KO penalties (pen_h/pen_a) | `rph`/`rpa` for `stage==='ko'` | 🔴 **dropped** — result route accepts only `{matchId,h,a}` (`route.ts:24`), no UI inputs (`page.tsx:489-518`). Schema + `backup` restore them, but the results admin ignores them → KO scoring truth gap | ❌ | Add pen fields to UI + route |
+| Recompute on save | server recompute fires | 🟡 implicit on read | partial | — |
+| Result write logging | classic logs | 🔴 **result route does not import `logTxn`** — result save/clear never appears in the txn log (every other write logs) | — | Add `logTxn` to result route |
 
 ---
 
@@ -87,9 +88,9 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Auto-derived KO slots | `state.koTeams` `auto`/`autoNote` badges (bracket.autoUpdateBracket) | 🟡 static info note only ("automatically derived… manual override in emergency") | — | Surface auto slots/state |
-| Manual KO override | `koh`/`koa` inputs → `saveKoTeams` | ❌ no editor | ❌ | Add KO override endpoint + UI |
-| Confirm/lock auto pairing | `confirmKoTeams` (🔒) on `auto && !confirmed` | ❌ missing | ❌ | Add confirm endpoint |
+| Auto-derived KO slots | `koTeams` auto badges | 🟡 static info note only (`page.tsx:449`) | — | Surface auto slots/state |
+| Manual KO override | `koh`/`koa` → `saveKoTeams` | ❌ no editor | ❌ | Add override endpoint + UI |
+| Confirm/lock auto pairing | `confirmKoTeams` | ❌ missing | ❌ | Add confirm endpoint |
 
 ---
 
@@ -97,7 +98,7 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Manual prediction override | `saveManualPrediction` → `game:adminSetPrediction` (bypasses kickoff lock, INV-10), updates Wizard mirror | 🟡 Override section (player+match+score) → `write('override', …)`; **no backend** | ❌ `/api/admin/override` missing | Add override endpoint (lock-bypass, wizard re-mirror, logged) |
+| Manual prediction override | `adminSetPrediction` (bypass lock INV-10, re-mirror, log) | ✅ **fully wired** — `page.tsx:578` → `/api/admin/override` merge-upsert bypassing kickoff lock, captures `before`, logs txn; wizard mirror re-derives on read (`override/route.ts:48-61`) | ✅ `override` | — |
 
 ---
 
@@ -105,9 +106,9 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Award bonus | preset `+3` buttons per round (Csoport/R32/R16/NF/EF/Döntő) → `awardBonus` | 🟡 free-form pts + reason → `write('bonus',{action:'award'})`; **no backend** (more flexible UI, but doesn't persist) | ❌ `/api/admin/bonus` missing | Add award endpoint; preset round buttons optional |
-| Revoke bonus | `removeBonus` (pops last entry) | 🟡 per-entry `Visszavonás` → `write('bonus',{action:'remove',index})`; no backend | ❌ | Add remove-by-index endpoint |
-| Bonus list | per-player last-5 + total | ✅ list rendered from `state.bonuses` | read | — |
+| Award bonus | preset `+3` per round → `awardBonus` | ✅ free-form pts + reason → `/api/admin/bonus` `award`, logged (`page.tsx:648`, route `:64-85`) | ✅ `bonus` | preset round buttons optional |
+| Revoke bonus | `removeBonus` (last) | ✅ per-entry `Visszavonás` → `bonus` `remove` by index (`page.tsx:682`, route `:40-61`) | ✅ | — |
+| Bonus list | per-player last-5 + total | ✅ rendered from `state.bonuses` (`page.tsx:603`) | read | — |
 
 ---
 
@@ -115,15 +116,16 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Start league + draw R1–2 | `swissStartLeague` → `swiss:startSwissLeague` (auto-include all, late-join, drop rename dups) | ❌ missing | ❌ | Add start-league endpoint (covers **late join** auto-inclusion) |
-| Suggest pairings (preview) | `swissSuggest` → `swiss:suggestSwissPairings` (preview only) | 🟡 shows pairings read from `state.swissPairings`; **no suggest query** | ❌ | Add suggest endpoint (preview, no write) |
-| Publish pairings | `swissPublish` → `swiss:publishSwissPairings` | 🟡 `write('swiss',{action:'publish',round})`; no backend | ❌ `/api/admin/swiss` missing | Add publish endpoint |
-| Reshuffle rounds | `swissReshuffle` — **multi-round** checkboxes + note → `swiss:reshuffleSwissRounds` | 🟡 single-round `{action:'reshuffle',round}`; no note; no backend | ❌ | Add reshuffle endpoint (multi-round + note) |
-| Remove player (no-show) | `swissRemove` / `swissRemoveAllRecommended` (2× missed → `flagged`) → `swiss:confirm…Removal(s)` + redraw | ❌ missing (no flagged list) | ❌ | Add removal endpoints + flagged surfacing |
-| Restore removed player | `swissRestore` → `swiss:restoreSwissPlayer` | ❌ missing | ❌ | Add restore endpoint |
-| Removed-players list | rendered from `swissProfiles[removedAtRound]` | ❌ missing | — | Surface removed list |
-| Swiss log | `state.swissLog` per-action audit | 🟡 shown in Log/Dashboard, not in Swiss section | read | — |
-| Standings freeze (after R10) | engine freezes standings | 🟡 status text "10. forduló után fagy be"; no admin control | read | Informational only |
+| Start league + draw R1–2 | `startSwissLeague` (auto-include, late-join) | ❌ missing | ❌ | Add start-league endpoint |
+| Suggest pairings (preview) | `suggestSwissPairings` | ❌ no suggest query | ❌ | Add preview endpoint |
+| Publish pairings | `publishSwissPairings` | ✅ `swiss` `publish` (draws if none exist) (`page.tsx:751`, route `:89-111`) | ✅ `swiss` | — |
+| Reshuffle rounds | `reshuffleSwissRounds` — multi-round + note | 🟡 `swiss` `reshuffle` **single round, random re-pairing (not the seeded engine)**, no note (`page.tsx:720`, route `:113-122`) | ✅ (reduced) | Add multi-round + note + seeded pairing |
+| Add player to league | covered by start-league late-join | 🟡 **route real** (`swiss/route.ts:124-143`) but **UI never calls it** | ✅ route, ❌ wiring | Add button |
+| Remove player (no-show) | `swissRemove`/`RemoveAllRecommended` (2× missed → flagged) | 🟡 **route real** (sets `removedAtRound`, `swiss/route.ts:145-155`) but **UI never calls it**; no flagged list | ✅ route, ❌ wiring | Add removal UI + flagged surfacing |
+| Restore removed player | `restoreSwissPlayer` | ❌ missing | ❌ | Add restore endpoint |
+| Removed-players list | from `swissProfiles` | ❌ missing | — | Surface removed list |
+| Swiss log | per-action audit | 🟡 shown via `state.swissLog`, not in Swiss section | read | — |
+| Standings freeze (after R10) | engine freezes | 🟡 status text "10. forduló után fagy be" (`page.tsx:710`); no control | read | informational |
 
 ---
 
@@ -131,16 +133,14 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| API key/secret settings | `ls2KeyInp`/`ls2SecretInp` → `saveLsSettings` (INV-09: stripped from public state) | ❌ no key/secret inputs, no save | ❌ | Add admin-gated API-config write (keys never in `/api/state`) |
-| Auto-sync toggle | `lsAutoInp` (`lsAutoSync`) | ❌ missing | ❌ | Add toggle |
-| Manual API unlock modal | red confirm modal → `_manualApiEnabled` (session) | 🟡 emergency checkbox + confirm in ApiSection | — | — |
-| Manual: fetch results | `adminSyncResults` (⬇ Eredmények) | 🟡 single "Kézi poll" → `write('poll',{manual:true})`; no backend | ❌ `/api/admin/poll` missing | Add poll endpoint |
-| Manual: standings | `refreshApiStandings` (👥) | ❌ missing | ❌ | Add standings refresh |
-| Manual: live scores | `refreshLiveScores` (📡) | ❌ (folded into single poll) | ❌ | — |
-| Manual: fixtures+odds | `refreshFixturesAndOdds` (🎲) | ❌ missing | ❌ | Add odds refresh (Wizard depends on odds snapshots) |
-| Friendly API test | `runFriendlyApiTest` → `LS.testFriendlyApiSearch` | ❌ missing | ❌ | Optional diagnostic |
-| Cache freshness view | n/a | ✅ tiles + per-key freshness from `state.apiCache` | read | — |
-| Auto poll (cron) | server cron | n/a (Vercel cron, outside admin) | — | Confirm cron exists |
+| API key/secret settings | `saveLsSettings` (INV-09) | ❌ no key/secret inputs | ❌ | Add admin-gated API-config write |
+| Auto-sync toggle | `lsAutoSync` | ❌ missing | ❌ | Add toggle |
+| Manual API unlock modal | red confirm → `_manualApiEnabled` | 🟡 emergency checkbox + confirm in ApiSection | — | — |
+| Manual: fetch results / poll | `adminSyncResults` | 🔴 **UI `write('poll',…)` calls `/api/admin/poll` → 404** (only `cron/poll` exists) (`page.tsx:835`); always "Backend még nincs bekötve" | ❌ no `admin/poll` route | Add `admin/poll` route (or point UI at cron) |
+| Manual: standings / live / fixtures+odds | `refreshApiStandings` / `refreshLiveScores` / `refreshFixturesAndOdds` | ❌ folded away / missing | ❌ | Add if emergency controls wanted |
+| Friendly API test | `runFriendlyApiTest` | ❌ missing | ❌ | optional |
+| Cache freshness view | n/a | ✅ tiles + per-key freshness from `state.apiCache` (`page.tsx:776-811`) | read | — |
+| Auto poll (cron) | server cron | ✅ `app/api/cron/poll/route.ts` (every 15 min, `vercel.json`) | ✅ | — |
 
 ---
 
@@ -148,11 +148,11 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| View log | `renderTxnLogCard` — last 20 from `state._txnlog`, who/path/label | 🟡 LogSection renders `state.swissLog` (**not** the real txn log) | read | Wire a real txn-log source |
-| Rollback entry | `rollbackTxn` → `game:rollbackTxn` (server restores pre-state if supported) | 🟡 `↩ Vissza` → `write('log',{action:'rollback',ts})`; **no backend** (UI admits "életbe lép a backend bekötése után") | ❌ `/api/admin/log` missing | Add rollback endpoint + eligibility flag |
-| Rollback eligibility | server decides if entry is reversible | ❌ not surfaced | — | Surface per-entry eligibility |
-| Clear log | `clearTxnLog` → `game:clearTxnLog` | 🟡 `Napló ürítése` → `write('log',{action:'clear'})`; no backend | ❌ | Add clear endpoint |
-| CSV archive export | `downloadTxnArchive` → `game:allTxns` (full permanent archive) | 🟡 `CSV export` client-side from `swissLog` (partial, not full archive) | ❌ | Back with full archive query |
+| View log | `renderTxnLogCard` — last 20 from `_txnlog` | 🔴 **wrong source** — route `read` queries `txnlog` (`log/route.ts:44-56`) but the Log/Dashboard UI render **`state.swissLog`** (`page.tsx:865`); the real log is in `state._txnlog` (`client-state.ts:60`) and **unused** → admin actions never appear in the admin log | ✅ route, 🔴 wiring | Render `state._txnlog`, drop `swissLog` |
+| Rollback entry | `rollbackTxn` (restore pre-state) | 🔴 **broken end-to-end** — route real for prediction txns keyed by ts in `txnlog` (`:69-105`), but UI feeds it `swissLog` timestamps → `txn-not-found`; UI still says "a backend bekötése után lép életbe" (`page.tsx:937`) | ✅ route, 🔴 wiring | Feed `_txnlog` ts |
+| Rollback eligibility | server decides | ❌ not surfaced | — | Surface per-entry |
+| Clear log | `clearTxnLog` | 🟡 route real (archives to `txnlogArchive`, `:107-122`) but clears `txnlog` while UI shows `swissLog` → list won't visibly empty | ✅ route, 🟡 wiring | Same source fix |
+| CSV archive export | `downloadTxnArchive` (full archive) | 🟡 client-side CSV from **`swissLog`** (wrong/legacy log) (`page.tsx:867`) | — | Export real `txnlog`/archive |
 
 ---
 
@@ -160,7 +160,7 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| JS error capture/view | `window.onerror`/`unhandledrejection` → localStorage (cap 60) → `renderFrontendErrorCard` | ❌ missing entirely | — | Port error capture + admin card |
+| JS error capture/view | `window.onerror` → localStorage → `renderFrontendErrorCard` | ❌ missing entirely | — | Port if wanted |
 | Clear errors | `clearFrontendErrors` | ❌ missing | — | — |
 
 ---
@@ -169,8 +169,8 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Daily-stat editor | rotating slots, save/add/remove, 6am rollover | ❌ missing entirely | — | Port editor + `dailyStats` settings write |
-| Formatting toolbar | B / I / `<br>` / flag inserter (strong/em/br) | ❌ missing | — | Port toolbar |
+| Daily-stat editor | rotating slots, 6am rollover | ❌ missing entirely (data table read in `db.ts:172` but no editor/render) | — | Port editor |
+| Formatting toolbar | B / I / `<br>` / flag | ❌ missing | — | — |
 
 ---
 
@@ -178,7 +178,7 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| List leads | `loadInterestLeads` → `leads:listInterest` (name/contact/message/EN badge/ts) | 🟡 static "nincs adatforrás bekötve" placeholder | ❌ no leads endpoint | Add leads list endpoint + render |
+| List leads | `listInterest` | 🟡 static "nincs adatforrás bekötve" placeholder (`page.tsx:945`); landing has no lead form either | ❌ | Add leads form + list endpoint |
 
 ---
 
@@ -186,9 +186,9 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Export JSON | `exportDB` | ✅ "Állapot exportálása" downloads `/api/state` JSON | ✅ `/api/state` | — |
-| Import JSON | `importDB` (dry-run + diff) | 🟡 step UI (file → dry-run → diff → confirm) → `write('backup',{action:'restore'})`; **dry-run unavailable, no backend** | ❌ `/api/admin/backup` missing | Add restore endpoint with dry-run + diff |
-| Auto restore-point | implied in import | 🟡 promised in confirm copy; not implemented | ❌ | Add pre-restore snapshot |
+| Export JSON | `exportDB` | 🟡 **UI exports client-side from `/api/state`** (`page.tsx:964`); the route's richer `export` action (full raw state, INV-09 redaction, `backup/route.ts:47-72`) is **never called** | ✅ route (unused) | Optionally use the route export |
+| Import / Restore JSON | `importDB` (dry-run + diff) | 🔴 **route fully implemented** (dry-run diff + confirm apply, INV-11, `:74-176`) but **UI sends only `{action:'restore', file: file?.name}`** — never the file **contents**, never `confirm` (`page.tsx:1026,1057`) → route hits the empty dry-run branch → **restore is a no-op**; whole route effectively unreachable | ✅ route, 🔴 wiring | Read file contents, send payload + confirm step |
+| Auto restore-point | implied | 🟡 promised in copy; depends on restore working | — | — |
 
 ---
 
@@ -196,37 +196,37 @@
 
 | Feature / action | Classic behaviour | New admin status | Backend endpoint? | What's needed |
 |---|---|---|---|---|
-| Version compare | `renderVersionCard` + `checkDeployVersion` (index ↔ frontend ↔ backend via `game:getVersion`) | ❌ missing | — | Add version diagnostics |
-| DB stats | `game:getDbStats` (players/pinHashes/predictions/favorites, empty-PIN warning) | 🟡 partial counts on Dashboard tiles; no PIN-hash health check | read | Add DB-health check (pin-hash warning) |
-| Post-WC todo box | `postWcTodoHtml` (dismissible reminder) | ❌ missing | — | Low priority |
-| Notifications (PWA) | `requestNotifications` + permission status | ❌ missing | — | Port if admin push wanted |
+| Self-test / diagnostics | `getDbStats` (counts, empty-PIN warning) | ✅ **new & fully wired** — `GET /api/admin/diagnostics` (`page.tsx:1136`, route `:36-139`): DB connectivity, write-health sentinel, encoded-name integrity, Convex↔Neon parity, derived-ranking sanity, PIN provisioning | ✅ `diagnostics` | — |
+| Version compare / deploy-version check | `checkDeployVersion` (index ↔ frontend ↔ backend) | ❌ not ported | — | Add version diagnostics |
+| Post-WC todo box | `postWcTodoHtml` | ❌ missing | — | low priority |
+| Notifications (PWA) | `requestNotifications` | ❌ missing | — | — |
 
 ---
 
 ## Priority gaps (ranked by operational impact)
 
-**Missing backend endpoints** — the new admin has UI for these but every write fails ("Backend még nincs bekötve"). Only `/api/admin/result` works.
+The Round-1 story ("only `/api/admin/result` exists; every other write fails") is gone — the backend matured dramatically. The Round-2 dominant issues are **wiring and data-source confusion**:
 
-1. **`/api/admin/players`** (create / rename-cascade / delete-with-cascade / restore) — INV-02 name cascade + 10-day window. Highest impact: player lifecycle is unusable; the 30-day copy also contradicts the 10-day spec.
-2. **`/api/admin/override`** — admin prediction override (lock-bypass + Wizard re-mirror + log). Core "tipp didn't save" fix path.
-3. **`/api/admin/result` penalties** — endpoint exists but drops KO `pen_h`/`pen_a`; KO results can't be recorded correctly.
-4. **`/api/admin/swiss`** (start-league, suggest, publish, reshuffle multi-round+note, remove/remove-all, restore) — entire Párbaj operation, incl. **late join** and no-show removal, is non-functional.
-5. **`/api/admin/bonus`** (award / remove) — advancement bonuses (+3/round) can't be applied.
-6. **`/api/admin/log`** (rollback + eligibility + clear) and a **real txn-log source** — currently mislabelled onto `swissLog`; rollback is the key safety net.
-7. **`/api/admin/poll`** + standings/odds refresh — emergency LiveScore controls; odds refresh feeds Wizard.
-8. **`/api/admin/backup`** (restore with dry-run + diff) — no safe restore path; export works, import doesn't.
-9. **Recompute trigger** — confirm INV-03: either derived reads fully reflect truth writes, or add an explicit recompute endpoint (the dashboard button currently only reloads).
-10. **API config write** (ls2Key/ls2Secret/lsAutoSync, INV-09-safe) — no way to set API credentials or auto-sync from the new admin.
+1. **🔴 Txn-log table mismatch (highest impact).** Admin writes go to `txnlog` (exposed as `state._txnlog`) but the Log + Dashboard UI render `state.swissLog`. Admin actions are invisible in the log, and **rollback is broken** because it feeds `swissLog` timestamps to a route that queries `txnlog`. The correct data (`_txnlog`) is already in state and unused.
+2. **🔴 Backup restore is a no-op.** The route has full dry-run/diff/apply logic, but the UI transmits only the filename — never the file contents and never `confirm`. The route's own `export` action is also never called. No safe restore path exists despite a sophisticated backend.
+3. **🔴 Manual poll button → 404.** UI calls `/api/admin/poll`; only `cron/poll` exists. The emergency LiveScore control always errors.
+4. **🔴 KO penalties dropped + result writes unlogged.** The result route + UI handle only `h/a`; `pen_h/pen_a` exist in schema and backup but are uncapturable via the results admin (KO-scoring truth gap). Result save/clear also never log to `txnlog`.
+5. **🟡 Real endpoints with no UI caller.** `players` `rename` (✏️ button is still a `showToast` stub) and `restore` + deleted-list; `swiss` `add`/`remove`. The backend caught up; the frontend didn't.
+6. **🔴 10 vs 30-day restore-window text mismatch** — UI copy says 30 days; route constant is 10 days (spec = 10).
+7. **❌ Admin auth hardening absent** — single shared `ADMIN_TOKEN`, no rate limiting, no TOTP/biometric; login is client-only `setAuthed(true)`.
+8. **❌ Leagues editor, KO manual override, player/admin PIN management, name-merge, LiveScore key/secret + autosync** — no UI and no route.
+9. **❌ Frontend error log, daily-stats editor, leads list/form, version/deploy-version check** — not ported.
+10. **🟡 Recompute is implicit-on-read** — no explicit pipeline trigger; the dashboard "recompute" button only re-reads state. Acceptable if derive-on-read is trusted, but there is no manual safety lever.
 
-**Missing features (no UI at all in the new admin)** — beyond the endpoint gaps:
+**Net count:** of 8 admin routes — **4 truly production-wired** (`result` minus penalties/logging, `override`, `bonus`, `diagnostics`), **3 real-but-mis/under-wired** (`players`, `swiss`, `log`), **1 real-but-dead** (`backup`), plus **1 phantom path** (manual poll → 404).
 
-1. **Leagues editor** (add/rename-with-member-remap/delete/private toggle) — completely absent.
-2. **KO team management** (manual override + confirm auto pairing) — info note only, no editor.
-3. **Player/admin PIN management** (`setPlayerPin` / `setAdminPin`) — no PIN fields.
-4. **TOTP 2FA + biometric unlock** — entire auth-hardening layer dropped; new admin is a single shared `ADMIN_TOKEN` with no rate limiting.
-5. **Daily stats editor** + formatting toolbar — absent.
-6. **Frontend error log** — absent.
-7. **Version & DB diagnostics** (PIN-hash health warning) — absent.
-8. **Name-merge/consolidation** tool — absent.
-9. **Deleted-players list/restore** — placeholder only.
-10. **Leads list** — placeholder only.
+---
+
+## Status tally (admin)
+
+| | ✅ | 🟡 | ❌ |
+|---|---|---|---|
+| Round 1 (approx) | ~7 | ~22 | ~28 |
+| **Round 2** | **15** | **18** | **22** |
+
+(The 🟡 bucket is now mostly "real backend, mis-wired UI" rather than Round-1's "UI with no backend." Several 🟡/🔴 rows are a one-line fix away from ✅ — point the log/rollback UI at `state._txnlog`, send file contents on restore, add the `admin/poll` route, wire the ✏️/restore/swiss-add/remove buttons.)
