@@ -1309,3 +1309,29 @@ export function flag(team: string): string {
 }
 
 export const MATCH_BY_ID: Record<number, Fixture> = Object.fromEntries(MATCHES.map((m) => [m.id, m]))
+
+// City (venue field on Fixture) → full stadium name.
+export const STADIUMS: Record<string, string> = {
+  'Atlanta': 'Mercedes-Benz Stadium',
+  'Boston': 'Gillette Stadium',
+  'Dallas': 'AT&T Stadium',
+  'Houston': 'NRG Stadium',
+  'Kansas City': 'Arrowhead Stadium',
+  'Los Angeles': 'SoFi Stadium',
+  'Miami': 'Hard Rock Stadium',
+  'New York': 'MetLife Stadium',
+  'Philadelphia': 'Lincoln Financial Field',
+  'San Francisco': "Levi's Stadium",
+  'Seattle': 'Lumen Field',
+  'Toronto': 'BMO Field',
+  'Vancouver': 'BC Place',
+  'Guadalajara': 'Estadio Akron',
+  'Mexikóváros': 'Estadio Azteca',
+  'Monterrey': 'Estadio BBVA',
+  'Budapest': 'Puskás Aréna',
+}
+
+export function stadiumOf(venue: string | null | undefined): string {
+  if (!venue) return ''
+  return STADIUMS[venue] || venue
+}

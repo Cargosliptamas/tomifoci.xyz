@@ -75,4 +75,6 @@ export type GameState = {
   swissPairings: Array<{ round: number; a: string; b: string; tier?: string; slot?: number }>
   swiss: { standings?: SwissStanding[]; round?: number; frozen?: boolean } | null
   swissLog: Array<{ ts: number; who?: string; action?: string }>
+  matchEvents?: Record<string, Array<{ minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }>>
+  matchScores?: Record<string, { ht?: { h: number; a: number } }>
 }

@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/page-header'
 import { LiveCard, FinishedCard } from '@/components/broadcast-card'
 import { MatchModal } from '@/components/match-modal'
 import { useGame } from '@/components/game-provider'
-import { flag, MATCHES, type Fixture } from '@/lib/fixtures'
+import { flag, stadiumOf, MATCHES, type Fixture } from '@/lib/fixtures'
 import { countdown, kickoffMs, liveScoreFor, oddsFor, resultFor, statusOf, teamsOf } from '@/lib/derive'
 
 function startOfDay(ts: number): number {
@@ -180,6 +180,11 @@ function UpcomingCard({ fixture }: { fixture: Fixture }) {
         cd && (
           <div className="border-t border-[#EBF6F5] px-3 py-[6px] text-center text-[11px] font-bold text-[#007E73]">⏰ {cd}</div>
         )
+      )}
+      {fixture.venue && (
+        <div className="border-t border-[#EBF6F5] px-3 py-[5px] text-center text-[10px] font-semibold text-[#0D3331]/40">
+          📍 {stadiumOf(fixture.venue)}
+        </div>
       )}
     </div>
   )

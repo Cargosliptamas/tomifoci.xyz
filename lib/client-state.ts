@@ -46,6 +46,21 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
     hasLsKey: Boolean(settingsRow.ls2Key && settingsRow.ls2Secret)
   }
 
+  // Extract per-match events and half-time scores from cached events_<matchId> rows.
+  const matchEvents: Record<string, Array<{ minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }>> = {}
+  const matchScores: Record<string, { ht?: { h: number; a: number } }> = {}
+  for (const row of tables.apiCache ?? []) {
+    if (typeof row.kind === 'string' && row.kind.startsWith('events_')) {
+      const matchId = row.kind.slice('events_'.length)
+      if (Array.isArray(row.data?.events) && row.data.events.length > 0) {
+        matchEvents[matchId] = row.data.events
+      }
+      if (row.data?.htScore) {
+        matchScores[matchId] = { ht: row.data.htScore }
+      }
+    }
+  }
+
   return {
     settings,
     predictions: groupRows(tables.predictions, community, (row) => [row.player, row.matchId, { h: row.h, a: row.a }]),
@@ -76,7 +91,9 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
     swissProfiles: isEnglish ? [] : (tables.swissProfiles ?? []).map((row) => pick(row, ['player', 'active', 'joinedRound', 'removedAtRound'])),
     swissPairings: isEnglish ? [] : (tables.swissPairings ?? []).map((row) => pick(row, ['round', 'a', 'b', 'tier', 'slot', 'publishedBy'])),
     swiss: isEnglish ? null : computeLiveSwiss(tables),
-    swissLog: isEnglish ? [] : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note']))
+    swissLog: isEnglish ? [] : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note'])),
+    matchEvents,
+    matchScores
   }
 }
 

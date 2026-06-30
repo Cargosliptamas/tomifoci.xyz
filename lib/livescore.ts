@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
-import { getSql } from './db'
-import { MATCH_BY_ID } from './fixtures'
+import { getSql, upsertImportedRow } from './db'
+import { MATCH_BY_ID, stadiumOf } from './fixtures'
 import { isKickedOff } from './engine/match-meta'
 
 // LiveScore-API ingestion. Pulls pre-match odds + final scores and maps them to our match
@@ -177,6 +177,8 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
 
   const oddsMap: Record<number, { h: number; x: number; a: number }> = {}
   const results: Record<number, { h: number; a: number; penH?: number; penA?: number }> = {}
+  // Collected during history loop: feed apiId + htScore per our match id (for event fetching).
+  const apiIdMap: Record<number, { apiId: string; reversed: boolean; htScore: { h: number; a: number } | null }> = {}
   let fixturesSeen = 0
   let unmatched = 0
 
@@ -226,6 +228,18 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           ? ref.reversed ? { penH: penSc.a, penA: penSc.h } : { penH: penSc.h, penA: penSc.a }
           : {}
         results[ref.id] = { ...oriented, ...penOriented }
+        // Collect apiId + htScore so we can batch-fetch events for newly-finished matches.
+        if (!(ref.id in apiIdMap)) {
+          const apiId = String(m.id || m.match_id || '')
+          if (apiId) {
+            const htRaw = m.ht_score || m.half_time_score || ''
+            const htParsed = parseScore(htRaw)
+            const htScore = htParsed
+              ? ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed
+              : null
+            apiIdMap[ref.id] = { apiId, reversed: ref.reversed, htScore }
+          }
+        }
       }
     }
 
@@ -311,6 +325,47 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
 
     // Auto-advance bracket: propagate confirmed winners into next-round koTeams slots.
     await advanceBracket(sql)
+
+    // ── Batch event fetching for newly-completed matches ─────────────────────
+    // Fetch and permanently cache events for finished matches that don't yet have an
+    // events_<matchId> entry. Capped at 8 fetches per poll to avoid quota burns.
+    const existingEventKeys = new Set<string>()
+    try {
+      const evRows = await sql`
+        SELECT convex_id FROM imported_rows
+        WHERE table_name = 'apiCache' AND convex_id LIKE 'events_%'
+      `
+      for (const r of evRows as Array<{ convex_id: string }>) existingEventKeys.add(r.convex_id)
+    } catch { /* best-effort */ }
+
+    let evFetched = 0
+    const MAX_EV_FETCH = 8
+    const now2 = Date.now()
+    for (const [mid, info] of Object.entries(apiIdMap)) {
+      if (evFetched >= MAX_EV_FETCH) break
+      const matchId = Number(mid)
+      const cacheKey = `events_${matchId}`
+      if (existingEventKeys.has(cacheKey)) continue
+      if (!isKickedOff(matchId, now2)) continue
+      try {
+        const evData = await ls(key, secret, '/scores/events.json', { id: info.apiId })
+        const events = parseEvents(evData, info.reversed)
+        // Venue: try from events response, then fall back to fixture STADIUMS map.
+        const evMatchObj = evData?.match ?? (Array.isArray(evData) ? evData[0] : null)
+        const venue =
+          (evMatchObj?.location) ||
+          (typeof evMatchObj?.venue === 'string' ? evMatchObj.venue : evMatchObj?.venue?.name) ||
+          stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
+          null
+        await upsertImportedRow('apiCache', cacheKey, {
+          kind: cacheKey,
+          ts: Date.now(),
+          data: { events, lineups: null, odds: null, status: 'FT', venue, htScore: info.htScore }
+        })
+        existingEventKeys.add(cacheKey)
+        evFetched++
+      } catch { /* skip this match, retry next poll */ }
+    }
 
     return { ok: true, fixturesSeen, oddsMapped: Object.keys(oddsMap).length, resultsWritten, unmatched, ts: Date.now() }
   } catch (error) {
@@ -401,13 +456,15 @@ async function advanceBracket(sql: ReturnType<typeof getSql>): Promise<void> {
 // matching the hu team-name pair against the live/history/fixtures feeds (same
 // mapping runLiveScorePoll uses), then pulls single.json + scores/events.json.
 
-export type MatchEvent = { minute: string; type: string; player: string; team: 'h' | 'a' }
+export type MatchEvent = { minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }
 export type LineupPlayer = { num: string; name: string }
 export type MatchCentre = {
   events: MatchEvent[]
   lineups: { home: LineupPlayer[]; away: LineupPlayer[] } | null
   odds: { h: number; x: number; a: number } | null
   status: string
+  venue: string | null
+  htScore: { h: number; a: number } | null
 }
 
 // LiveScore event keyword → normalised type the modal renders an icon for.
@@ -501,12 +558,14 @@ function parseEvents(data: any, reversed: boolean): MatchEvent[] {
     const type = EVENT_TYPE[key]
     if (!type) return
     const player = typeof e.player === 'string' ? e.player : e.player?.name || e.player_name || ''
+    const sub = typeof e.info === 'object' && e.info
+      ? (e.info.name || '')
+      : (e.player_2 || e.substitute || '')
     let team = evSide(e)
     if (reversed) team = team === 'h' ? 'a' : 'h'
-    out.push({
-      ev: { minute: String(e.time ?? e.minute ?? ''), type, player, team },
-      sort: Number(e.sort ?? i)
-    })
+    const ev: MatchEvent = { minute: String(e.time ?? e.minute ?? ''), type, player, team }
+    if (sub) ev.sub = String(sub)
+    out.push({ ev, sort: Number(e.sort ?? i) })
   })
   return out.sort((a, b) => a.sort - b.sort).map((x) => x.ev)
 }
@@ -529,13 +588,23 @@ function parseLineups(...sources: any[]): MatchCentre['lineups'] {
   return null
 }
 
-// Pre-match odds already cached by runLiveScorePoll under apiCache 'odds'.
+// Pre-match odds cached by runLiveScorePoll: 'odds' for live upcoming, 'kickoffOdds' for
+// matches that have already kicked off (frozen snapshot). Falls back to kickoffOdds so
+// completed-game modals still show the odds that were available at kick-off time.
 async function readCachedOdds(matchId: number): Promise<MatchCentre['odds']> {
   try {
     const sql = getSql()
-    const rows = await sql`SELECT payload FROM imported_rows WHERE table_name = 'apiCache' AND convex_id = 'odds' LIMIT 1`
-    const cache = (rows as Array<{ payload: any }>)[0]?.payload?.data as Record<string, any> | undefined
-    const o = cache?.[String(matchId)]
+    const rows = await sql`
+      SELECT convex_id, payload FROM imported_rows
+      WHERE table_name = 'apiCache' AND convex_id IN ('odds', 'kickoffOdds')
+    `
+    let currentOdds: Record<string, any> = {}
+    let kickoffOdds: Record<string, any> = {}
+    for (const r of rows as Array<{ convex_id: string; payload: any }>) {
+      if (r.convex_id === 'odds') currentOdds = r.payload?.data ?? {}
+      else if (r.convex_id === 'kickoffOdds') kickoffOdds = r.payload?.data ?? {}
+    }
+    const o = currentOdds[String(matchId)] ?? kickoffOdds[String(matchId)]
     if (o && o.h && o.x && o.a) return { h: Number(o.h), x: Number(o.x), a: Number(o.a) }
   } catch {
     // best-effort
@@ -550,7 +619,7 @@ export async function fetchMatchCentre(matchId: number): Promise<MatchCentre> {
   const odds = await readCachedOdds(matchId)
   const key = process.env.LS_KEY
   const secret = process.env.LS_SECRET
-  if (!key || !secret) return { events: [], lineups: null, odds, status: '' }
+  if (!key || !secret) return { events: [], lineups: null, odds, status: '', venue: null, htScore: null }
 
   let ref: { apiId: string; reversed: boolean } | null = null
   try {
@@ -558,7 +627,7 @@ export async function fetchMatchCentre(matchId: number): Promise<MatchCentre> {
   } catch {
     ref = null
   }
-  if (!ref) return { events: [], lineups: null, odds, status: '' }
+  if (!ref) return { events: [], lineups: null, odds, status: '', venue: null, htScore: null }
 
   let single: any = null
   let eventsData: any = null
@@ -579,5 +648,19 @@ export async function fetchMatchCentre(matchId: number): Promise<MatchCentre> {
   let lineups = parseLineups(single, single?.match, eventsData)
   if (lineups && ref.reversed) lineups = { home: lineups.away, away: lineups.home }
 
-  return { events, lineups, odds, status }
+  // Venue: prefer API field, fall back to fixture STADIUMS map
+  const venue =
+    matchObj?.location ||
+    (typeof matchObj?.venue === 'string' ? matchObj.venue : matchObj?.venue?.name) ||
+    stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
+    null
+
+  // Half-time score
+  const htRaw = matchObj?.ht_score || matchObj?.half_time_score || ''
+  const htParsed = parseScore(htRaw)
+  const htScore = htParsed
+    ? ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed
+    : null
+
+  return { events, lineups, odds, status, venue, htScore }
 }
