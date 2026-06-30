@@ -207,28 +207,6 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       }
     }
 
-    // Freeze kickoffOdds: any match that was in the previous odds poll but is absent from
-    // the new oddsMap has left the fixtures feed (typically: it kicked off and is no longer
-    // listed as upcoming). Freeze its last-seen pre-match odds into a cumulative snapshot
-    // that repairOdds uses as its first-priority repair source (WIZ-13).
-    // The snapshot is append-only: existing entries are never overwritten.
-    const updatedKickoff = { ...prevKickoffData }
-    let kickoffChanged = false
-    const newOddsIds = new Set(Object.keys(oddsMap).map(String))
-    for (const [mid, odds] of Object.entries(prevOddsData)) {
-      if (!newOddsIds.has(mid) && !(mid in updatedKickoff)) {
-        updatedKickoff[mid] = odds
-        kickoffChanged = true
-      }
-    }
-    if (kickoffChanged) {
-      await sql`
-        INSERT INTO imported_rows (table_name, convex_id, payload)
-        VALUES ('apiCache', 'kickoffOdds', ${JSON.stringify({ kind: 'kickoffOdds', ts: Date.now(), data: updatedKickoff })}::jsonb)
-        ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
-      `
-    }
-
     // Write odds (recomputable cache) + final scores (merge-upsert).
     await sql`
       INSERT INTO imported_rows (table_name, convex_id, payload)

@@ -1,5 +1,6 @@
 import { getSql, upsertImportedRow, verifyPlayerPinInNeon } from '@/lib/db'
 
+
 // Server-side anti-bruteforce throttle for PIN auth, backed by the
 // imported_rows key/value table 'authAttempts' (convex_id = the throttle key).
 //
@@ -24,11 +25,23 @@ type AttemptRecord = {
 
 export type ThrottleStatus = { locked: boolean; retryAfterMs: number }
 
-// Build a stable throttle key. Per-account (community:player) — no IP component,
-// because x-forwarded-for is client-controlled and including it would let an attacker
-// bypass per-account lockout by rotating the header (S2 fix).
-export function throttleKey(community: string, player: string): string {
-  return `${community}:${player}`
+// Build a stable throttle key. Player-scoped; optionally narrowed by a coarse IP
+// taken from the x-forwarded-for header so a single IP can't fan out across names.
+export function throttleKey(community: string, player: string, ip?: string | null): string {
+  const base = `${community}:${player}`
+  const cleanIp = (ip ?? '').split(',')[0]?.trim()
+  return cleanIp ? `${base}:${cleanIp}` : base
+}
+
+// Pull the first IP from an x-forwarded-for header on a Request, if present.
+export function ipFromRequest(request: Request): string | null {
+  try {
+    const xff = request.headers.get('x-forwarded-for')
+    if (!xff) return null
+    return xff.split(',')[0]?.trim() || null
+  } catch {
+    return null
+  }
 }
 
 async function readRecord(key: string): Promise<AttemptRecord | null> {
@@ -125,7 +138,7 @@ export async function verifyPlayerPinThrottled(
   pin: string,
   community: 'hu' | 'en'
 ): Promise<ThrottledPinResult> {
-  const key = throttleKey(community, player)
+  const key = throttleKey(community, player, ipFromRequest(request))
 
   // Refuse before verifying if this account is currently locked — closes the oracle.
   const gate = await checkThrottle(key)

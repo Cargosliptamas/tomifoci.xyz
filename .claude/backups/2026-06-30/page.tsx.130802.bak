@@ -116,16 +116,9 @@ export default function LoginPage() {
         {selected ? (
           <button
             onClick={() => {
-              if (needsClaimCode) {
-                setNeedsClaimCode(false)
-                setPendingPin('')
-                setClaimCode('')
-                setClaimError(null)
-              } else {
-                setSelected(null)
-                setPin('')
-                setError(null)
-              }
+              setSelected(null)
+              setPin('')
+              setError(null)
             }}
             className="flex size-[38px] items-center justify-center rounded-[12px] bg-white text-[18px] shadow-[0_2px_8px_rgba(13,51,49,0.08)]"
           >

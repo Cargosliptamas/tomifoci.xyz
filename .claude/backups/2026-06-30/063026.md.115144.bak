@@ -18,8 +18,5 @@
 - Security: fixed S1 PIN brute-force hole (shared throttle across favorites/predictions/wizard/auth) + tests.
 - Test matches: removed test leaderboard (UI+compute), confirmed frontend already clean (fixtures has none), fixed MATCH_META egg opponent bug (1005/1006), parity guard added. DB deletion deemed unnecessary by user.
 - Cleanup: C1 full engine-unify (deleted duplicate scoring impl + data.js runtime parse), C4 dead exports, C6 clampOdds dedupe. All via tests.
-- S2 fixed: removed IP from throttle key (x-forwarded-for is client-spoofable; per-account lockout is now IP-agnostic). Affected: throttle.ts, player-pin/route.ts, change-pin/route.ts.
-- kickoffOdds fixed: runLiveScorePoll now reads previous 'odds' cache before each poll and freezes odds for matches that disappeared from the fixtures feed into a cumulative 'kickoffOdds' apiCache row. repairOdds() tier 1 (snapshot) is now live.
-- C3 push: intentionally parked ("dormant over gated"). Module self-documents activation path. No wiring needed.
-- Verified: next build ✅, tsc ✅, 14/14 tests.
-- Open: S3 claim-on-first-login pre-emptive takeover. C2 livescore.ts still parses data.js (parity guard covers drift).
+- Verified: next build ✅, tsc ✅, 14/14 tests (started at 5).
+- Open: C3 push (parked?), S2/S3 medium security, kickoffOdds dead tier.

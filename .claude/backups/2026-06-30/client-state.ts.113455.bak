@@ -327,6 +327,243 @@ function mapResults(tables: Tables): Result[] {
   return out
 }
 
+type MatchMeta = { id: number; stage: 'group' | 'ko' | 'test'; home: string; away: string }
+
+let matchMetaCache: Map<number, MatchMeta> | null = null
+
+function loadMatchMeta() {
+  if (matchMetaCache) return matchMetaCache
+
+  for (const candidate of dataFileCandidates()) {
+    if (!existsSync(candidate)) continue
+    try {
+      const context: Record<string, any> = {}
+      runInNewContext(
+        `${readFileSync(candidate, 'utf8')}\n;globalThis.__MATCHES__ = MATCHES.map(({ id, stage, home, away }) => ({ id, stage, home, away }));`,
+        context,
+        { timeout: 1000 }
+      )
+      const matches = Array.isArray(context.__MATCHES__) ? context.__MATCHES__ : []
+      matchMetaCache = new Map(
+        matches
+          .filter((match) => Number.isInteger(match.id) && ['group', 'ko', 'test'].includes(match.stage))
+          .map((match) => [
+            Number(match.id),
+            { id: Number(match.id), stage: match.stage, home: String(match.home ?? ''), away: String(match.away ?? '') }
+          ])
+      )
+      return matchMetaCache
+    } catch {
+      // Try the next candidate path.
+    }
+  }
+
+  matchMetaCache = new Map()
+  return matchMetaCache
+}
+
+function dataFileCandidates() {
+  const cwd = process.cwd()
+  return [
+    join(cwd, 'public', 'classic', 'data.js'),
+    join(cwd, 'apps', 'rewrite', 'public', 'classic', 'data.js'),
+    join(cwd, 'data.js'),
+    join(cwd, '..', '..', 'data.js')
+  ]
+}
+
+function scoreCommunity(players: Row[], community: string, tables: Tables, matchMeta: Map<number, MatchMeta>) {
+  if (!players.length) return []
+
+  const results = new Map<number, Row>()
+  for (const row of tables.results ?? []) {
+    if (Number.isInteger(Number(row.matchId))) results.set(Number(row.matchId), row)
+  }
+
+  const predictions = new Map<string, Map<number, Row>>()
+  for (const row of tables.predictions ?? []) {
+    if (communityOf(row) !== community) continue
+    if (!predictions.has(row.player)) predictions.set(row.player, new Map())
+    predictions.get(row.player)!.set(Number(row.matchId), row)
+  }
+
+  const bonusByPlayer = new Map<string, number>()
+  for (const row of tables.bonuses ?? []) {
+    if (communityOf(row) !== community) continue
+    bonusByPlayer.set(row.player, (bonusByPlayer.get(row.player) ?? 0) + Number(row.pts ?? 0))
+  }
+
+  const favoriteByPlayer = new Map<string, Row>()
+  for (const row of tables.favorites ?? []) {
+    if (communityOf(row) === community) favoriteByPlayer.set(row.player, row)
+  }
+
+  const scopes = buildScopeSets(matchMeta)
+  const scoreRows: Row[] = []
+  for (const player of players) {
+    const name = player.name
+    if (!name) continue
+    const playerPredictions = predictions.get(name) ?? new Map()
+    const favorite = favoriteByPlayer.get(name)
+    const bonus = bonusByPlayer.get(name) ?? 0
+    const byScope: Record<string, Row> = {}
+
+    for (const [scope, matchIds] of Object.entries(scopes)) {
+      let matchPts = 0
+      let exact = 0
+      let counted = 0
+      let predicted = 0
+      let totalR = 0
+
+      for (const matchId of matchIds) {
+        const result = results.get(matchId)
+        if (!result) continue
+        totalR++
+        const prediction = playerPredictions.get(matchId)
+        if (prediction) predicted++
+        if (!prediction) continue
+        counted++
+
+        const raw = calcPts(prediction, result)
+        const match = matchMeta.get(matchId)
+        const doubled = match ? isFavoriteMatch(favorite, match) : false
+        matchPts += raw * (doubled ? 2 : 1)
+        if (raw === 5) exact++
+      }
+
+      const scopeBonus = ['all', 'vb', 'ko'].includes(scope) ? bonus : 0
+      byScope[scope] = {
+        pts: matchPts + scopeBonus,
+        matchPts,
+        bonus: scopeBonus,
+        exact,
+        counted,
+        predicted,
+        totalR,
+        ppg: counted > 0 ? (matchPts + scopeBonus) / counted : 0
+      }
+    }
+
+    const byMatch: Record<string, Row> = {}
+    for (const [matchId, match] of matchMeta) {
+      const result = results.get(matchId)
+      const prediction = playerPredictions.get(matchId)
+      if (!result || !prediction) continue
+      const raw = calcPts(prediction, result)
+      const favorite = isFavoriteMatch(favoriteByPlayer.get(name), match)
+      byMatch[String(matchId)] = { raw, fav: favorite, pts: raw * (favorite ? 2 : 1), exact: raw === 5 }
+    }
+
+    const all = byScope.all ?? blankScore()
+    scoreRows.push(
+      withDefined({
+        player: name,
+        community: community === 'hu' ? undefined : community,
+        pts: all.pts,
+        matchPts: all.matchPts,
+        bonus: all.bonus,
+        exact: all.exact,
+        counted: all.counted,
+        predicted: all.predicted,
+        totalR: all.totalR,
+        ppg: all.ppg,
+        byScope,
+        byMatch
+      })
+    )
+  }
+
+  return scoreRows
+}
+
+function buildScopeSets(matchMeta: Map<number, MatchMeta>) {
+  const testInAll = Date.now() < Date.UTC(2026, 5, 11, 14, 0, 0)
+  const scopes: Record<string, number[]> = { all: [], vb: [], test: [], group: [], ko: [] }
+  for (const [id, match] of matchMeta) {
+    if (match.stage === 'group') {
+      scopes.all.push(id)
+      scopes.vb.push(id)
+      scopes.group.push(id)
+    } else if (match.stage === 'ko') {
+      scopes.all.push(id)
+      scopes.vb.push(id)
+      scopes.ko.push(id)
+    } else {
+      scopes.test.push(id)
+      if (testInAll) scopes.all.push(id)
+    }
+  }
+  return scopes
+}
+
+function rankCommunities(settings: Row, playerScores: Row[]) {
+  const rows: Row[] = []
+  // Test/friendly matches were purged at WC kickoff — no standalone 'test' leaderboard.
+  const scopes = ['all', 'vb', 'group', 'ko']
+  const huPlayers = settings.players ?? []
+  const enPlayers = settings.enPlayers ?? []
+  const huLeagues = ['Mindenki', ...((settings.leagues ?? []) as string[]).filter((league) => league !== 'Mindenki')]
+
+  const byCommunityAndPlayer = new Map<string, Row>()
+  for (const score of playerScores) byCommunityAndPlayer.set(`${communityOf(score)}:${score.player}`, score)
+
+  for (const scope of scopes) {
+    for (const league of huLeagues) {
+      const players = league === 'Mindenki' ? huPlayers : huPlayers.filter((player: Row) => (player.leagues ?? []).includes(league))
+      rows.push({ scopeLeague: `${scope}_${league}`, rows: rankRows(players, 'hu', scope, byCommunityAndPlayer), ts: Date.now() })
+    }
+  }
+
+  if (enPlayers.length) {
+    for (const scope of ['all', 'vb', 'group', 'ko']) {
+      rows.push({ scopeLeague: `en_${scope}_Mindenki`, rows: rankRows(enPlayers, 'en', scope, byCommunityAndPlayer), ts: Date.now() })
+    }
+  }
+
+  return rows
+}
+
+function rankRows(players: Row[], community: string, scope: string, scores: Map<string, Row>) {
+  return players
+    .map((player) => {
+      const score = scores.get(`${community}:${player.name}`)
+      return score?.byScope?.[scope] ? { name: player.name, ...score.byScope[scope] } : { name: player.name, ...blankScore() }
+    })
+    .sort((a, b) => b.pts - a.pts || b.exact - a.exact || b.ppg - a.ppg)
+}
+
+function blankScore() {
+  return { pts: 0, matchPts: 0, bonus: 0, exact: 0, counted: 0, predicted: 0, totalR: 0, ppg: 0 }
+}
+
+function isFavoriteMatch(favorite: Row | undefined, match: MatchMeta) {
+  const team = activeFavorite(favorite, match.stage)
+  return Boolean(team && (match.home === team || match.away === team))
+}
+
+function activeFavorite(favorite: Row | undefined, stage: MatchMeta['stage']) {
+  if (!favorite) return null
+  if (favorite.switched && favorite.pendingKO && stage === 'group') return favorite.team || null
+  return favorite.switched ? favorite.newTeam || favorite.team || null : favorite.team || null
+}
+
+function calcPts(prediction: Row, result: Row) {
+  const ph = Number(prediction.h)
+  const pa = Number(prediction.a)
+  const rh = Number(result.h)
+  const ra = Number(result.a)
+  if (ph === rh && pa === ra) return 5
+  const predictionDiff = ph - pa
+  const resultDiff = rh - ra
+  const predictionOutcome = Math.sign(predictionDiff)
+  const resultOutcome = Math.sign(resultDiff)
+  if (predictionOutcome === 0 && resultOutcome === 0) return 3
+  if (predictionOutcome !== resultOutcome) return 0
+  if (predictionDiff === resultDiff) return 3
+  if (ph === rh || pa === ra) return 2
+  return 1
+}
+
 function first(rows: Row[] | undefined) {
   return rows?.[0]
 }

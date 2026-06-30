@@ -46,51 +46,6 @@ describe('buildPublicState — secret stripping (INV-09)', () => {
   })
 })
 
-// C1 unified path: score + ranking now flow through the pure engine (computeAllScores +
-// computeRankings against MATCH_META). This exercises favourite ×2, exact detection,
-// ranking order, and the removal of the standalone 'test' leaderboard.
-describe('buildPublicState — score + ranking via the engine (C1)', () => {
-  const tables = {
-    settings: [
-      {
-        leagues: ['Mindenki'],
-        players: [
-          { name: 'Anna', leagues: ['Mindenki'] },
-          { name: 'Bela', leagues: ['Mindenki'] }
-        ]
-      }
-    ],
-    predictions: [
-      { player: 'Anna', matchId: 1, h: 2, a: 0, community: 'hu' }, // exact (match 1: Mexikó–Dél-Afrika)
-      { player: 'Anna', matchId: 3, h: 1, a: 1, community: 'hu' }, // exact (match 3: Kanada–Bosznia)
-      { player: 'Bela', matchId: 1, h: 0, a: 0, community: 'hu' } // wrong outcome → 0
-    ],
-    results: [
-      { matchId: 1, h: 2, a: 0 },
-      { matchId: 3, h: 1, a: 1 }
-    ],
-    favorites: [
-      { player: 'Anna', team: 'Mexikó', switched: false, community: 'hu' } // match 1 home → ×2
-    ]
-  }
-
-  it('doubles favourite match points and ranks players by points', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
-    const board = state.rankings[encodeClientKey('all_Mindenki')] as Array<{ name: string; pts: number; exact: number; counted: number }>
-    expect(board).toBeDefined()
-    // Anna: match1 exact(5) ×2 fav = 10, match3 exact(5) = 15 total, 2 exacts.
-    expect(board[0]).toMatchObject({ name: 'Anna', pts: 15, exact: 2, counted: 2 })
-    // Bela: predicted 0-0 vs 2-0 → wrong outcome → 0 pts, 1 counted.
-    expect(board[1]).toMatchObject({ name: 'Bela', pts: 0, counted: 1 })
-  })
-
-  it('emits no standalone test leaderboard (4 hu scopes × 1 league)', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
-    // hu scopes are all/vb/group/ko (no 'test') × the single 'Mindenki' league.
-    expect(Object.keys(state.rankings).length).toBe(4)
-  })
-})
-
 // Wizard of ODDS must SCORE LIVE from the engine, not from a frozen snapshot.
 describe('buildPublicState — live Wizard of ODDS ranking', () => {
   const tables = {

@@ -125,7 +125,7 @@ export async function verifyPlayerPinThrottled(
   pin: string,
   community: 'hu' | 'en'
 ): Promise<ThrottledPinResult> {
-  const key = throttleKey(community, player)
+  const key = throttleKey(community, player, ipFromRequest(request))
 
   // Refuse before verifying if this account is currently locked — closes the oracle.
   const gate = await checkThrottle(key)

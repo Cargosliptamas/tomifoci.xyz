@@ -56,18 +56,15 @@ export default function LoginPage() {
     [players, search]
   )
 
-  async function submitPin(nextPin: string, code?: string) {
+  async function submitPin(nextPin: string) {
     if (!selected) return
     setBusy(true)
     setError(null)
-    setClaimError(null)
     try {
-      const body: Record<string, string> = { player: selected, pin: nextPin, community: 'hu' }
-      if (code) body.claimCode = code
       const res = await fetch('/api/auth/player-pin', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ player: selected, pin: nextPin, community: 'hu' })
       })
       const json = await res.json().catch(() => ({}))
       // ok => verified. auth-not-provisioned => no PINs seeded yet (dormant): allow in.
@@ -76,29 +73,14 @@ export default function LoginPage() {
         router.push('/meccsek')
         return
       }
-      // claim-required => admin has set a claim code; show the claim code step.
-      if (json.error === 'claim-required') {
-        setPendingPin(nextPin)
-        setNeedsClaimCode(true)
-        return
-      }
-      if (needsClaimCode) {
-        setClaimError('Hibás kód')
-      } else {
-        setError(json.error === 'bad-pin' ? 'Hibás PIN' : 'Hiba történt')
-        setPin('')
-      }
+      setError(json.error === 'bad-pin' ? 'Hibás PIN' : 'Hiba történt')
+      setPin('')
     } catch {
       setError('Nincs kapcsolat')
       setPin('')
     } finally {
       setBusy(false)
     }
-  }
-
-  async function submitWithClaimCode() {
-    if (!selected || !pendingPin || !claimCode.trim()) return
-    await submitPin(pendingPin, claimCode.trim())
   }
 
   function press(key: string) {
@@ -116,16 +98,9 @@ export default function LoginPage() {
         {selected ? (
           <button
             onClick={() => {
-              if (needsClaimCode) {
-                setNeedsClaimCode(false)
-                setPendingPin('')
-                setClaimCode('')
-                setClaimError(null)
-              } else {
-                setSelected(null)
-                setPin('')
-                setError(null)
-              }
+              setSelected(null)
+              setPin('')
+              setError(null)
             }}
             className="flex size-[38px] items-center justify-center rounded-[12px] bg-white text-[18px] shadow-[0_2px_8px_rgba(13,51,49,0.08)]"
           >

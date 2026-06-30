@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { verifyPlayerPinInNeon, setPlayerPinInNeon, getClaimCode } from '@/lib/db'
+import { verifyPlayerPinInNeon, setPlayerPinInNeon } from '@/lib/db'
 import { checkThrottle, recordAttempt, clearThrottle, throttleKey } from '@/lib/throttle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
-  let body: { player?: string; pin?: string; community?: string; claimCode?: string }
+  let body: { player?: string; pin?: string; community?: string }
   try {
     body = await request.json()
   } catch {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
   }
 
-  const key = throttleKey(community, player)
+  const key = throttleKey(community, player, ipFromRequest(request))
 
   // Anti-bruteforce: refuse before verifying if this key is currently locked.
   const gate = await checkThrottle(key)
@@ -49,16 +49,7 @@ export async function POST(request: Request) {
 
     // No PIN on file for this player yet (table empty or player missing) →
     // claim-on-first-login: this PIN becomes their PIN. NOT a failure — don't throttle.
-    // S3: if a claim code is configured, the request must provide it or the claim is
-    // rejected. This prevents pre-emptive account takeover via the public player roster.
     if (result.reason === 'pin-hashes-empty' || result.reason === 'player-pin-not-found') {
-      const requiredCode = await getClaimCode()
-      if (requiredCode) {
-        const provided = String(body.claimCode ?? '').trim()
-        if (provided !== requiredCode) {
-          return NextResponse.json({ ok: false, error: 'claim-required' }, { status: 403 })
-        }
-      }
       const claimed = await setPlayerPinInNeon(player, pin, community)
       if (claimed) {
         await clearThrottle(key)

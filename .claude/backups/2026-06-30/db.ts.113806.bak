@@ -104,25 +104,6 @@ export async function changePlayerPinInNeon(
   return { ok: true }
 }
 
-// Read the admin-configured claim code. Returns null when no code is set (claims open).
-// Stored in imported_rows adminAuth:claimCode so no schema migration is needed.
-// Fails open — if the DB read errors, treat as "no code required" to avoid locking out
-// players during a DB hiccup. Set a strong code via POST /api/admin/claim-code.
-export async function getClaimCode(): Promise<string | null> {
-  try {
-    const sql = getSql()
-    const rows = await sql`
-      SELECT payload FROM imported_rows
-      WHERE table_name = 'adminAuth' AND convex_id = 'claimCode'
-      LIMIT 1
-    `
-    const code = (rows as Array<{ payload: any }>)[0]?.payload?.code
-    return typeof code === 'string' && code ? code : null
-  } catch {
-    return null
-  }
-}
-
 export async function savePredictionsToNeon(args: {
   player: string
   community: 'hu' | 'en'

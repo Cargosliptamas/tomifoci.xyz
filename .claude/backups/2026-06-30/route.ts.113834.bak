@@ -28,10 +28,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad-pick' }, { status: 400 })
   }
 
-  // Clamp the snapshot odds to [1.10, 10.0] via the engine helper (single source of truth).
+  // Clamp the snapshot odds to [1.10, 10.0] if provided.
   let oddsAtPick: number | null = null
   if (body.oddsAtPick != null && Number.isFinite(Number(body.oddsAtPick))) {
-    oddsAtPick = clampOdds(Number(body.oddsAtPick))
+    oddsAtPick = Math.min(10, Math.max(1.1, Number(body.oddsAtPick)))
   }
 
   try {

@@ -48,9 +48,10 @@
 - **Verified**: `next build` ✅, `tsc` ✅, 14/14 tests ✅.
 
 ## Still open (code review, not yet done)
-- **C3** push pipeline: intentionally parked per "dormant over gated". `lib/push.ts` self-documents activation (install web-push, set VAPID_PUBLIC/VAPID_PRIVATE). Subscriptions accumulate until activation.
-- **S3 (MED security)**: claim-on-first-login allows pre-emptive account takeover. Mitigation: admin-distributed claim code, or admin reset path. Not yet built.
-- **C2 remainder**: `data.js` still parsed by `lib/livescore.ts`; parity guard (`test/match-data-parity.test.ts`) catches drift meanwhile.
+- **C3** push pipeline inert (`sendPush()` never called) — decide: wire into cron poll, or mark parked. Founder rule "dormant over gated" makes parking defensible.
+- **S2/S3 (MED security)**: throttle key includes spoofable IP (weakens per-account lockout — switch to per-(community,player) as primary); claim-on-first-login pre-emptive takeover (needs claim code or admin reset path).
+- **Correctness**: `kickoffOdds` snapshot tier dead — nothing writes apiCache kind `'kickoffOdds'` in `runLiveScorePoll` (only `'odds'`/`'live'`), so odds-repair silently falls back to live odds. Freeze a snapshot at kickoff, or delete the dead branch.
+- **C2 remainder**: `data.js` still parsed by `lib/livescore.ts` (separate from client-state now); full single-source would generate data.js from MATCH_META. Parity guard (`test/match-data-parity.test.ts`) catches drift meanwhile.
 
 ## Recommended Skills (global, in ~/.claude/skills)
 - `diagnosing-bugs` — multiple confirmed bugs with known file+line locations; good for systematic fix sessions
