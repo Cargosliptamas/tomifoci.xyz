@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useGame } from '@/components/game-provider'
 import { flag, type Fixture } from '@/lib/fixtures'
 import {
@@ -33,6 +33,18 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState(Boolean(savedPred))
   const [err, setErr] = useState<string | null>(null)
+
+  // savedPred arrives asynchronously (state starts null while /api/state loads), so the
+  // useState initializers above run before it's known. Sync once it (or its value) shows
+  // up, but never clobber an in-progress edit.
+  useEffect(() => {
+    if (!dirty) {
+      setH(savedPred?.h ?? 0)
+      setA(savedPred?.a ?? 0)
+      setSavedMsg(Boolean(savedPred))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedPred?.h, savedPred?.a])
 
   function step(side: 'h' | 'a', delta: number) {
     if (locked) return
