@@ -1358,7 +1358,7 @@ function Diagnostics({ token }: { token: string }) {
   return (
     <div className="animate-in">
       <div className="mb-4 rounded-[12px] border border-[#d3e6e4] bg-[#eef6f6] px-[15px] py-3 text-[13px] text-[#11302E]">
-        🔬 Önteszt — élőben futtatja a rendszer-ellenőrzéseket (adatbázis, írás-egészség, Convex↔Neon szinkron,
+        🔬 Önteszt — élőben futtatja a rendszer-ellenőrzéseket (adatbázis, írás-egészség,
         adatintegritás, származtatott rangsorok, auth). Csak olvasás + egy eldobható szondasor; nem módosít adatot.
       </div>
 

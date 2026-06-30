@@ -14,24 +14,7 @@ function authorized(request: Request): boolean {
   return request.headers.get('x-admin-token') === token
 }
 
-const CONVEX_URL = process.env.CONVEX_URL || 'https://adept-roadrunner-530.eu-west-1.convex.cloud'
-
 type Check = { name: string; ok: boolean; detail: string; severity: 'pass' | 'warn' | 'fail' }
-
-async function convexState(): Promise<any | null> {
-  try {
-    const r = await fetch(`${CONVEX_URL}/api/query`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: 'game:state', args: {}, format: 'json' }),
-      cache: 'no-store'
-    })
-    const j = await r.json()
-    return j.status === 'success' ? j.value : null
-  } catch {
-    return null
-  }
-}
 
 export async function GET(request: Request) {
   if (!process.env.ADMIN_TOKEN) return NextResponse.json({ ok: false, error: 'admin-not-configured' }, { status: 503 })
@@ -77,35 +60,7 @@ export async function GET(request: Request) {
     checks.push({ name: 'Adatintegritás (kódolt nevek)', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
   }
 
-  // 4) Convex ↔ Neon parity (predictions + results)
-  const cvx = await convexState()
-  if (cvx) {
-    try {
-      const cvxPreds = Object.values(cvx.predictions ?? {}).reduce((n: number, m: any) => n + Object.keys(m).length, 0)
-      const [np] = await sql`SELECT COUNT(*)::int n FROM predictions WHERE community = 'hu'`
-      const predDelta = cvxPreds - (np.n ?? 0)
-      checks.push({
-        name: 'Convex↔Neon tippek',
-        ok: predDelta <= 0,
-        detail: predDelta <= 0 ? `szinkronban (${np.n})` : `${predDelta} tipp csak a Convexen`,
-        severity: predDelta <= 0 ? 'pass' : 'warn'
-      })
-      const cvxRes = Object.keys(cvx.results ?? {}).length
-      const [nr] = await sql`SELECT COUNT(*)::int n FROM results`
-      checks.push({
-        name: 'Convex↔Neon eredmények',
-        ok: (nr.n ?? 0) >= cvxRes,
-        detail: `Neon ${nr.n} · Convex ${cvxRes}`,
-        severity: (nr.n ?? 0) >= cvxRes ? 'pass' : 'warn'
-      })
-    } catch (e) {
-      checks.push({ name: 'Convex↔Neon parity', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
-    }
-  } else {
-    checks.push({ name: 'Convex↔Neon parity', ok: true, detail: 'Convex nem elérhető (kihagyva)', severity: 'warn' })
-  }
-
-  // 5) Live derived-state sanity — rankings never exceed the roster
+  // 4) Live derived-state sanity — rankings never exceed the roster
   try {
     const state = await loadPublicStateFromNeon('hu')
     const roster = state.settings.players?.length ?? 0
@@ -122,7 +77,7 @@ export async function GET(request: Request) {
     checks.push({ name: 'Származtatott rangsorok', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
   }
 
-  // 6) Auth provisioning
+  // 5) Auth provisioning
   try {
     const [a] = await sql`SELECT COUNT(*)::int n FROM imported_rows WHERE table_name = 'pinHashes'`
     checks.push({

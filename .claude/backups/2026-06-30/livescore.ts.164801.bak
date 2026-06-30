@@ -176,7 +176,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
   }
 
   const oddsMap: Record<number, { h: number; x: number; a: number }> = {}
-  const results: Record<number, { h: number; a: number; penH?: number; penA?: number }> = {}
+  const results: Record<number, { h: number; a: number }> = {}
   let fixturesSeen = 0
   let unmatched = 0
 
@@ -218,14 +218,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         if (!ref) continue
         const sc = parseScore(m.ft_score || m.score)
         if (!sc) continue
-        const oriented = ref.reversed ? { h: sc.a, a: sc.h } : { h: sc.h, a: sc.a }
-        // Best-effort penalty score extraction (field name varies by livescore API version)
-        const penRaw = m.pen_score || m.penalty_score || m.penalties || ''
-        const penSc = parseScore(penRaw)
-        const penOriented = penSc
-          ? ref.reversed ? { penH: penSc.a, penA: penSc.h } : { penH: penSc.h, penA: penSc.a }
-          : {}
-        results[ref.id] = { ...oriented, ...penOriented }
+        results[ref.id] = ref.reversed ? { h: sc.a, a: sc.h } : { h: sc.h, a: sc.a }
       }
     }
 
@@ -290,27 +283,13 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
     `
     let resultsWritten = 0
-    const now = Date.now()
     for (const [mid, r] of Object.entries(results)) {
-      const matchId = Number(mid)
-      // Never write a result for a match that hasn't started yet. The history feed can
-      // occasionally include fixtures from other competitions whose team names collide.
-      if (!isKickedOff(matchId, now)) continue
-      const penH = r.penH ?? null
-      const penA = r.penA ?? null
       await sql`
-        INSERT INTO results (match_id, h, a, pen_h, pen_a)
-        VALUES (${matchId}, ${r.h}, ${r.a}, ${penH}, ${penA})
-        ON CONFLICT (match_id) DO UPDATE SET
-          h = EXCLUDED.h, a = EXCLUDED.a,
-          pen_h = COALESCE(EXCLUDED.pen_h, results.pen_h),
-          pen_a = COALESCE(EXCLUDED.pen_a, results.pen_a)
+        INSERT INTO results (match_id, h, a) VALUES (${Number(mid)}, ${r.h}, ${r.a})
+        ON CONFLICT (match_id) DO UPDATE SET h = EXCLUDED.h, a = EXCLUDED.a
       `
       resultsWritten++
     }
-
-    // Auto-advance bracket: propagate confirmed winners into next-round koTeams slots.
-    await advanceBracket(sql)
 
     return { ok: true, fixturesSeen, oddsMapped: Object.keys(oddsMap).length, resultsWritten, unmatched, ts: Date.now() }
   } catch (error) {
@@ -322,76 +301,6 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       unmatched,
       ts: Date.now(),
       error: error instanceof Error ? error.message : 'unknown'
-    }
-  }
-}
-
-// ── Bracket auto-advance ─────────────────────────────────────────────────────
-// Scans all KO results and propagates each confirmed winner into the next-round
-// koTeams slot. Processing in ascending matchId order enables single-pass cascade
-// (R32 winners fill R16 slots which then feed QF slots in the same call).
-// A slot with `confirmed: true` is considered manually verified and is never overwritten.
-async function advanceBracket(sql: ReturnType<typeof getSql>): Promise<void> {
-  const resultRows = await sql`
-    SELECT match_id, h, a, pen_h AS "penH", pen_a AS "penA"
-    FROM results
-    WHERE match_id >= 73 AND match_id <= 104
-    ORDER BY match_id ASC
-  `
-  if (!(resultRows as any[]).length) return
-
-  const koRows = await sql`
-    SELECT convex_id, payload FROM imported_rows
-    WHERE table_name = 'koTeams'
-    ORDER BY convex_id::integer ASC
-  `
-  const koMap = new Map<number, Record<string, any>>()
-  for (const r of koRows as Array<{ convex_id: string; payload: any }>) {
-    const id = Number(r.convex_id)
-    if (r.payload?.home && r.payload?.away) koMap.set(id, r.payload)
-  }
-
-  for (const row of resultRows as any[]) {
-    const matchId = Number(row.match_id)
-    const teams = koMap.get(matchId)
-    if (!teams) continue
-
-    const r = { h: Number(row.h), a: Number(row.a), penH: row.penH, penA: row.penA }
-    const path = BRACKET_PATH[matchId]
-
-    // Winner → next-round slot
-    if (path) {
-      const winner = winnerTeam(r, teams as any)
-      if (winner) {
-        const nextId = path.next
-        const existing = koMap.get(nextId) ?? {}
-        if (existing.confirmed) continue
-        const updated = { ...existing, [path.home ? 'home' : 'away']: winner }
-        await sql`
-          INSERT INTO imported_rows (table_name, convex_id, payload)
-          VALUES ('koTeams', ${String(nextId)}, ${JSON.stringify(updated)}::jsonb)
-          ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
-        `
-        koMap.set(nextId, updated)
-      }
-    }
-
-    // SF losers → 3rd-place match (103)
-    if (matchId === 101 || matchId === 102) {
-      const loser = loserTeam(r, teams as any)
-      if (loser) {
-        const isHome = matchId === 101
-        const ex103 = koMap.get(103) ?? {}
-        if (!ex103.confirmed) {
-          const upd103 = { ...ex103, [isHome ? 'home' : 'away']: loser }
-          await sql`
-            INSERT INTO imported_rows (table_name, convex_id, payload)
-            VALUES ('koTeams', '103', ${JSON.stringify(upd103)}::jsonb)
-            ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
-          `
-          koMap.set(103, upd103)
-        }
-      }
     }
   }
 }

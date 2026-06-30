@@ -49,6 +49,7 @@
 
 ## Still open (code review, not yet done)
 - **C3** push pipeline: intentionally parked per "dormant over gated". `lib/push.ts` self-documents activation (install web-push, set VAPID_PUBLIC/VAPID_PRIVATE). Subscriptions accumulate until activation.
+- **S3 (MED security)**: claim-on-first-login allows pre-emptive account takeover. Mitigation: admin-distributed claim code, or admin reset path. Not yet built.
 - **C2 remainder**: `data.js` still parsed by `lib/livescore.ts`; parity guard (`test/match-data-parity.test.ts`) catches drift meanwhile.
 
 ## Recommended Skills (global, in ~/.claude/skills)
