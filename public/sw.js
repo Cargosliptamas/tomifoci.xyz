@@ -11,7 +11,7 @@
  * cache whose name != current, so phones drop stale files automatically.
  */
 
-const CACHE_VERSION = '1.0.0';
+const CACHE_VERSION = '2026-06-30';
 const CACHE = 'tomifoci-' + CACHE_VERSION;
 
 // Core shell assets. allSettled-style add so one 404 never fails install.
