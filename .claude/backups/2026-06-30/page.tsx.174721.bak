@@ -1,0 +1,196 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { PageHeader } from '@/components/page-header'
+import { LiveCard, FinishedCard } from '@/components/broadcast-card'
+import { MatchModal } from '@/components/match-modal'
+import { useGame } from '@/components/game-provider'
+import { flag, stadiumOf, MATCHES, type Fixture } from '@/lib/fixtures'
+import { countdown, kickoffMs, liveScoreFor, oddsFor, resultFor, statusOf, teamsOf } from '@/lib/derive'
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+const MONTHS = ['jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.', 'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.']
+function kickoffLabel(f: Fixture): string {
+  const d = new Date(f.date)
+  if (!Number.isFinite(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}. ${hh}:${mm}`
+}
+
+function badgeOf(f: Fixture): string {
+  if (f.stage === 'group' && f.group && f.group !== '–') return `${f.group} csoport`
+  if (f.stage === 'test') return 'Felkészülési'
+  return f.label ?? 'Meccs'
+}
+
+export default function MeccsCenterPage() {
+  const { state, status } = useGame()
+
+  const buckets = useMemo(() => {
+    const now = Date.now()
+    const todayStart = startOfDay(now)
+    const tomorrowStart = todayStart + 24 * 3_600_000
+    const live: Fixture[] = []
+    const finished: Fixture[] = []
+    const today: Fixture[] = []
+    const upcoming: Fixture[] = []
+    for (const f of MATCHES) {
+      const s = statusOf(state, f, now)
+      if (s === 'live') {
+        live.push(f)
+      } else if (s === 'finished') {
+        finished.push(f)
+      } else {
+        const ko = kickoffMs(f)
+        if (ko >= tomorrowStart) upcoming.push(f)
+        else today.push(f) // today + any past-but-unresolved fixtures
+      }
+    }
+    const byKo = (a: Fixture, b: Fixture) => kickoffMs(a) - kickoffMs(b)
+    return {
+      live: live.sort(byKo),
+      finished: finished.sort(byKo).reverse(),
+      today: today.sort(byKo),
+      upcoming: upcoming.sort(byKo)
+    }
+  }, [state])
+
+  const empty = status === 'ready' && !buckets.live.length && !buckets.finished.length && !buckets.today.length && !buckets.upcoming.length
+
+  return (
+    <>
+      <PageHeader eyebrow="MATCH CENTRE" title="Meccs Center" />
+      <div className="mx-auto max-w-[600px] px-[18px] pt-4">
+        {status === 'loading' && <Skeleton />}
+
+        {/* 🔴 ÉLŐBEN */}
+        {buckets.live.length > 0 && (
+          <Section>
+            <Header>
+              <span className="live-dot size-[9px] rounded-full bg-[#FF3B30] shadow-[0_0_8px_#FF3B30]" />
+              ÉLŐBEN
+            </Header>
+            {buckets.live.map((f) => (
+              <LiveCard key={f.id} fixture={f} />
+            ))}
+          </Section>
+        )}
+
+        {/* 📅 MAI MECCSEK */}
+        {buckets.today.length > 0 && (
+          <Section>
+            <Header>📅 MAI MECCSEK</Header>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {buckets.today.map((f) => (
+                <UpcomingCard key={f.id} fixture={f} />
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* 🏁 LEGFRISSEBB EREDMÉNYEK — full-width hero for the newest, 2-col for the rest */}
+        {buckets.finished.length > 0 && (
+          <Section>
+            <Header>🏁 LEGFRISSEBB EREDMÉNYEK</Header>
+            <FinishedCard fixture={buckets.finished[0]} />
+            {buckets.finished.length > 1 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {buckets.finished.slice(1).map((f) => (
+                  <UpcomingCard key={f.id} fixture={f} />
+                ))}
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* ⏳ KÖZELGŐ — compact 3-col grid */}
+        {buckets.upcoming.length > 0 && (
+          <Section>
+            <Header>⏳ KÖZELGŐ</Header>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {buckets.upcoming.map((f) => (
+                <UpcomingCard key={f.id} fixture={f} />
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {empty && <div className="py-12 text-center text-[14px] text-[#0D3331]/50">Nincs megjeleníthető mérkőzés.</div>}
+      </div>
+    </>
+  )
+}
+
+function Section({ children }: { children: React.ReactNode }) {
+  return <section className="mb-5">{children}</section>
+}
+
+function Header({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-[10px] flex items-center gap-[7px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">{children}</div>
+  )
+}
+
+// Tap-to-open compact card for not-yet-started fixtures (today + upcoming).
+function UpcomingCard({ fixture }: { fixture: Fixture }) {
+  const { state } = useGame()
+  const [open, setOpen] = useState(false)
+  const { home, away } = teamsOf(state, fixture)
+  const result = resultFor(state, fixture.id)
+  const live = liveScoreFor(state, fixture.id)
+  const odds = oddsFor(state, fixture.id)
+  const cd = countdown(fixture)
+
+  return (
+    <div
+      onClick={() => setOpen(true)}
+      className="tap cursor-pointer overflow-hidden rounded-[16px] bg-white surface-card hover:bg-[#F7FBFA]"
+    >
+      {open && <MatchModal fixture={fixture} live={false} onClose={() => setOpen(false)} />}
+      <div className="flex items-center justify-between border-b border-[#EBF6F5] bg-[#f6faf9] px-[13px] py-[7px] text-[10px] font-extrabold tracking-[0.04em] text-[#0D3331]/55">
+        <span>{badgeOf(fixture)}</span>
+        <span className="tnum">{kickoffLabel(fixture)}</span>
+      </div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 px-3 py-[12px]">
+        <div className="flex min-w-0 items-center gap-[6px]">
+          <span className="text-[18px]">{flag(home)}</span>
+          <span className="truncate text-[13px] font-extrabold">{home}</span>
+        </div>
+        <div className="tnum text-center text-[16px] font-black text-[#0D3331]/40">
+          {result ? `${result.h}:${result.a}` : live ? `${live.h}:${live.a}` : 'VS'}
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-[6px]">
+          <span className="truncate text-right text-[13px] font-extrabold">{away}</span>
+          <span className="text-[18px]">{flag(away)}</span>
+        </div>
+      </div>
+      {odds ? (
+        <div className="flex items-center justify-around border-t border-[#EBF6F5] bg-[#fbfdfd] px-3 py-[7px] text-[11px] font-bold text-[#0D3331]/60">
+          <span>1 <b className="tnum text-[#007E73]">{odds[0].toFixed(2)}</b></span>
+          <span>X <b className="tnum text-[#007E73]">{odds[1].toFixed(2)}</b></span>
+          <span>2 <b className="tnum text-[#007E73]">{odds[2].toFixed(2)}</b></span>
+        </div>
+      ) : (
+        cd && (
+          <div className="border-t border-[#EBF6F5] px-3 py-[6px] text-center text-[11px] font-bold text-[#007E73]">⏰ {cd}</div>
+        )
+      )}
+    </div>
+  )
+}
+
+function Skeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="h-[58px] animate-pulse rounded-[18px] bg-white/70" />
+      ))}
+    </div>
+  )
+}
