@@ -1,0 +1,55 @@
+# Memory — Tomifoci.xyz
+
+## Now
+- Game **launched** (night of 2026-06-29) and running well on Vercel+Neon.
+- Code review done 2026-06-30 (agent). **4 of 5 prior "priority gaps" were already fixed** (live scores, wizard odds shape, swiss render, PIN throttle on auth routes). Real open items below.
+- Classic-game **fallback** at `/classic` = PLAN ONLY for now — see `CLASSIC_FALLBACK_PLAN.md` (build deferred). Classic UI is Convex-bound; needs its data layer rewired to Neon `/api/state`.
+- Classic repo (`Vb_Tippjatek_2026`) docs purged of stale "Convex is current" framing (CLAUDE.md, AGENTS.md, PROJECT-GOVERNOR.md banners; historical journals left intact).
+- Knowledge base of classic game **rules** saved at `.claude/knowledge-base.md` (parity spec).
+
+## Project
+- **Name**: tomifoci
+- **What it is**: A Hungarian-language World Cup 2026 football prediction game (tippjáték). Players predict match scores, join a "Wizard of ODDS" odds-based 1/X/2 league, compete in a Swiss-format "Párbaj" head-to-head tournament, pick a favourite team, and track standings/group tables/bracket. It is a full Next.js rewrite of a prior Convex-based app (`Vb_Tippjatek_2026`). UI is Hungarian throughout; English only on the landing page and login.
+- **Stack**: Next.js 16, React 19, TypeScript 5, Tailwind CSS v4, Drizzle ORM, Neon serverless Postgres, Vitest, pnpm, deployed on Vercel
+- **Repo / Production**: Vercel project `tomifoci.xyz` (ID `prj_puazmV7xpKmtZATcUj7XfzE9hLtJ`); Neon DB `blue-poetry-39540165`
+
+## Key Paths
+- `app/(player)/` — all player routes: meccsek, tabella, wizard, parbaj, profil, csoportok, brackets, szabalyok
+- `app/api/state/` — single public-state endpoint; everything the UI reads flows through here
+- `app/api/cron/poll/` — Vercel cron every 15 min; polls LiveScore API for odds + FT results
+- `lib/db.ts` — `loadPublicStateFromNeon` — master DB read that feeds the state endpoint
+- `lib/client-state.ts` — `buildPublicState` — runs all game engines on every read
+- `lib/engine/` — pure engines: `swiss.ts`, `wizard.ts`, `scoring.ts`, `match-meta.ts`
+- `lib/livescore.ts` — `runLiveScorePoll`; polls odds + FT history; does NOT poll live in-progress scores
+- `db/schema.ts` — Drizzle schema; key tables: `predictions`, `results`, `settings`; key KV buckets: `apiCache`, `wizardPicks`, `swissPairings`, `pinHashes`, `pushSubscriptions`
+- `components/game-provider.tsx` — client-side polling + state distribution
+- `CLASSIC_PARITY_PLAYER.md` — living parity audit (Round 2, 2026-06-29); canonical list of gaps
+- `DESIGN_SPEC.md` — frozen design tokens and layout rules (BROADCAST palette)
+
+## Goals & Current Work
+- Reach full feature parity with the classic app; keep the launched game stable.
+- **Real open items (from 2026-06-30 code review), sequenced cleanup→bugfix:**
+  - **Cleanup C1**: dead duplicate scoring engine — `lib/engine/scoring.ts` (`computeAllScores`/`computeRankings`/`calcPts`/`getActiveFav`) has zero callers; `lib/client-state.ts` reimplements all of it (second `calcPts` at ~:507). Two impls WILL drift. Pick one.
+  - **Cleanup C2**: three definitions of match data — `lib/fixtures.ts` MATCHES, `lib/engine/match-meta.ts` MATCH_META+KICKOFFS, `public/classic/data.js` (parsed via `runInNewContext`). Lock/display/scoring can disagree. Make one source of truth.
+  - **Cleanup C3**: push pipeline inert — `sendPush()` never called (decide: wire into cron poll, or mark parked).
+  - **Cleanup C4–C6**: unused `lib/db.ts` exports (`getImportedRow`, `importedRowCount`); duplicate `clampOdds` (`engine/wizard.ts:15` vs `api/wizard/route.ts:28`).
+  - **Bug S1 (HIGH security)**: PIN brute-force — `favorites`/`predictions`/`wizard` verify PINs with NO throttle (only `auth/*` is throttled). Public roster + 4-digit PIN = clean oracle. Route all PIN checks through `lib/throttle.ts`.
+  - **Bug S2/S3 (MED security)**: throttle key includes spoofable IP (weakens per-account lockout); claim-on-first-login allows pre-emptive account takeover.
+  - **Correctness**: `kickoffOdds` snapshot tier is dead (nothing writes kind `'kickoffOdds'`) — odds-repair silently falls back to live odds. Either freeze a snapshot at kickoff or delete the dead branch.
+- Wizard profile toggles (opt-in/mirror/leave) on Profile page — still a parity gap to verify.
+
+## Recommended Skills (global, in ~/.claude/skills)
+- `diagnosing-bugs` — multiple confirmed bugs with known file+line locations; good for systematic fix sessions
+- `implement` — standard feature build; use for each parity gap
+- `tdd` — `test/` + Vitest present; engine logic (`lib/engine/`) is pure and unit-testable
+- `qa` — parity audit is an ongoing structured QA task; useful for re-running the audit matrix
+- `design-an-interface` — DESIGN_SPEC.md + design_handoff prototypes are the source of truth; all UI must match
+- `review` — useful before closing each parity gap to check against the audit matrix
+
+## Patterns Noticed
+- All game state is computed on every `/api/state` read (no caching layer); engines are pure functions in `lib/engine/`
+- Design tokens are frozen: teal text = `#007E73` (never `#00B8A9`); player bg `#EAF6F5`; Inter font; tap targets ≥44px
+- Hungarian copy is verbatim from the `.dc.html` design prototypes in `design_handoff_vbtippjatek_redesign/`
+- All dates use `Europe/Budapest` timezone (UTC+2 during tournament)
+- Dev server runs on port 3001: `cd /Users/tamasvarga/Documents/GitHub/tomifoci.xyz && pnpm dev`
+- Run tests: `cd /Users/tamasvarga/Documents/GitHub/tomifoci.xyz && pnpm test`

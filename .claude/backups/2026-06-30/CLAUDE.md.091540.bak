@@ -1,0 +1,194 @@
+# CLAUDE.md — VB Tippjáték 2026
+
+World Cup 2026 prediction game for ~35 friends. Vanilla JS, no build step. Backend: Convex. Hosted on Cloudflare. Current version: **v1.3.0**.
+
+---
+
+## Run & deploy
+
+```bash
+# Frontend: any static server from repo root
+# Backend:
+npx convex dev      # local (typechecks, generates _generated/)
+npx convex deploy   # production
+
+# Syntax check after any JS edit (template literals silently break tabs):
+node --check js/<file>.js
+```
+
+Secrets live in **Convex env vars only** — never in the repo:
+`LS_KEY`, `LS_SECRET`, `VAPID_PRIVATE`, `VAPID_EMAIL`
+
+---
+
+## Architecture
+
+```
+Convex crons (livescore.ts) ──poll──▶ apiCache table
+Convex subscriptions        ──push──▶ convex-bridge.js ──▶ store.js (state={})
+                                                               │
+UI mutations: window.cvxMut('module:fn', args)                 ▼
+                                            render-*.js ◀──reads── state.* + data.js globals
+                                                 │
+                                            ui.js / sync.js (tab switch, polling, toasts)
+```
+
+**The browser never calls the live-score API directly.** All polling is server-side via Convex cron.
+
+---
+
+## JS load order (order matters — renderers need globals)
+
+```
+data.js → bracket.js → livescore.js → config.js → convex-bridge.js (ES module) →
+util.js → store.js → scoring.js →
+render-leaderboard → render-predictions → render-wizard → render-swiss →
+render-matchcentre → render-groups → render-profile → changelog →
+render-about → admin-totp → admin-txnlog → admin-core →
+game-actions → notify → sync → ui → app
+```
+
+`sw.js` keeps a copy of this list — keep them in sync or offline users 404 on new files.
+
+---
+
+## Tab → renderer map
+
+| Tab | Container | Renderer |
+|---|---|---|
+| Ranglista | `#lbContent` | `render-leaderboard.js` |
+| Tippjeim | `#predContent` | `render-predictions.js` |
+| Wizard of ODDS | `#wizardContent` | `render-wizard.js` |
+| Svájci Liga | `#swissContent` | `render-swiss.js` |
+| Meccs Center | `#matchesContent` | `render-matchcentre.js` |
+| Csoportok | `#groupsContent` | `render-groups.js` |
+| Profilom | `#profileContent` | `render-profile.js` |
+| Névjegy | `#aboutContent` | `render-about.js` |
+| Admin | `#adminContent` | `admin-core.js` |
+
+Each renderer does `container.innerHTML = bigTemplateString`. Four focus tabs (lb, pred, wizard, swiss) include the `.ig` rules infographic.
+
+---
+
+## Convex backend modules
+
+| File | Responsibility |
+|---|---|
+| `game.ts` | Players, leagues, predictions, results, bonuses, `scheduleRecompute()`, `getVersion` |
+| `scoring.ts` | `computeAllScores` + `updateRankings` |
+| `wizard.ts` | 1X2 picks, odds repair, `computeWizardScores`, `updateWizardRankings` |
+| `swiss.ts` | Pairings, standings, reshuffle, `computeSwiss` |
+| `livescore.ts` | Cron feed ingest → `apiCache` + `results` |
+| `bracket.ts` | KO bracket, `autoUpdateBracket` |
+| `auth.ts` | PIN/admin hash checks (`assertAdmin`) |
+| `crons.ts` | Scheduled jobs (poll + daily-stat push) |
+| `push.ts` | Web-push (Node action) |
+| `schema.ts` | All table definitions |
+
+**Recompute pipeline** (must fire after any truth mutation):
+`bracket.autoUpdateBracket → scoring.computeAllScores → scoring.updateRankings → wizard.computeWizardScores → wizard.updateWizardRankings → swiss.computeSwiss`
+
+---
+
+## Key state shape (what renderers read)
+
+```
+state.predictions[player][matchId] = {h, a}
+state.results[matchId] = {h, a}
+state.rankings["{scope}_{league}"] = [rows]     // server-computed
+state.scores.byMatch
+state.wizardProfiles / state.wizardPicks / state.wizardRankings
+state.swiss (rows/rounds) / state.swissProfiles / state.swissPairings / state.swissLog
+liveScores, matchOdds                            // live cache
+currentPlayer, adminOk                           // session
+```
+
+---
+
+## Scoring rules (summary — full detail in SPEC_DIGEST.md)
+
+**Mode 1 — Score predictor:** 5 exact · 3 correct GD+winner · 2 correct winner+one team goals · 1 correct outcome · 0 wrong. Only 90-minute result counts. Favourite team = ×2 points. Advance bonus: +3 per round for initial/switched favourite team.
+
+**Mode 2 — Wizard of ODDS:** Pick 1/X/2. Correct = decimal odds at pick time, clamped [1.10, 10.00]. Wrong = 0. Missing odds → peer most-recent → 1.10 floor. Varázslótanonc auto-mirrors mode-1 prediction.
+
+**Mode 3 — Swiss League (beta):** 13 rounds × 8 matches. Matchup score = Σ base pred points (0–40, no favourite doubling). Match points: win 3 / draw 1–1 / loss 0 / bye 3. Tiebreak: match pts → total pred pts → H2H → Buchholz.
+
+---
+
+## Critical invariants (most common bug source)
+
+**INV-01 — Source of truth:** Predictions + results are immutable truth. Everything else is derived and recomputable. Never persist a value you can recompute.
+
+**INV-02 — Player identity = name string.** Rename/delete must cascade across ALL name-keyed tables: `predictions`, `favorites`, `bonuses`, `pinHashes`, `wizardPicks`, `wizardProfiles`, `swissProfiles`, `swissPairings (a+b)`, `settings.players[].name`. Missing any = duplicate identities + wrong points.
+
+**INV-03 — Recompute after every truth mutation.** Call `scheduleRecompute()` in `game.ts`.
+
+**INV-05 — Version sync:** bump in all 5 places: `version.json` · `sw.js CACHE_VERSION` · `package.json version` · `js/admin-core.js FRONTEND_VERSION` · `convex/game.ts getVersion`.
+
+**INV-09 — Secret leak:** `ls2Key/ls2Secret/adminTotp` must be stripped from the public `state` query. Verify this is still true.
+
+**INV-10 — Server-side kickoff lock:** `savePrediction` and `savePick` must reject after kickoff server-side (not client-only).
+
+---
+
+## Known gotchas
+
+- **Template literals** — render files are giant template-literal strings. A stray backtick breaks the whole tab silently. Always run `node --check js/<file>.js` after editing.
+- **Wizard recompute** — must run in **both** `pollLive` branches in `sync.js` (live-scored AND final result).
+- **`is_home`/`is_away` from live feed are `"1"`/`"0"` strings**, not booleans. Use `evTruthy()` helper.
+- **Feed side reversal** — feed home/away order can be opposite to ours; always re-derive via `findMatch().reversed`.
+- **PWA stale cache** — if changes don't appear on phones, `CACHE_VERSION` in `sw.js` was not bumped.
+- **`adminAuth` table must have exactly 1 row** — multiple rows cause `.first()` to pick the wrong hash → "Hibás PIN" with correct PIN. Fix: Convex dashboard → delete all `adminAuth` rows → `npx convex run auth:seedAdmin '{"pin":"…"}' --prod`. The `setAdminPin` mutation requires an existing row; `seedAdmin` (internalMutation) is the bootstrap for a blank table.
+- **Dark mode is intentionally disabled** — `index.html` forces `data-theme='light'`; `setTheme/getTheme` still exist but the toggle is removed.
+- **2FA flag is intentionally OFF** — `ADMIN_2FA_ENABLED=false` in `admin-totp.js`; TOTP secret retained for later.
+- **Firebase is dead** — migration to Convex complete; any `fb*` name is legacy.
+- **CSS palette**: shipped palette is in `theme.css` (`--p #00B8A9` teal), not the dark `:root` tokens. Teal as text = `--p-ink #007E73` (WCAG AA) — never `--p`.
+
+---
+
+## Debugging by symptom
+
+| Symptom | First look |
+|---|---|
+| Tab blank / JS error | `node --check js/render-*.js` — template literal broken |
+| Wrong points/rankings | Convex dashboard → `playerScores` / `rankings` tables |
+| Live scores not updating | Convex Logs → search "pollLive" |
+| Push not firing | `apiCache` table → `notifyState` row |
+| Feed data wrong side | `findMatch().reversed` flag in `livescore.ts` |
+| Desktop layout broken | `desktop.css` (≥1024px grid) |
+| PWA not updating on phones | `sw.js CACHE_VERSION` not bumped |
+| Admin version mismatch card | Version out of sync across the 5 locations |
+
+---
+
+## Open questions / unverified bugs (from AUDIT_FINDINGS.md)
+
+- **OQ-1** — Is the "favourite eliminated → switch allowed" path still active or superseded?
+- **OQ-2** — Does changing a base prediction update the mirror Wizard pick + odds (WIZ-10)?
+- **OQ-3** — Is EN community actually working? (`locales/en.json` + path detection)
+- **OQ-4** — Does `state` query strip `ls2Key/ls2Secret/adminTotp`? (security)
+- **OQ-5** — Is server-side kickoff lock present on `savePrediction` + `savePick`?
+- **OQ-6** — Buchholz: average (not sum) of opponents' match points, byes excluded?
+
+---
+
+## Release checklist
+
+1. Archive previous version into `_rollback/v<ver>_<timestamp>/`
+2. Bump version in **5 places** (see INV-05)
+3. Add entry at top of `CHANGELOG` array in `js/changelog.js`
+4. Run `node --check` on every edited `js/*.js`
+5. `git push` (frontend) + `npx convex deploy` (backend — mandatory for cron/push changes)
+
+---
+
+## Key docs
+
+| Doc | What it covers |
+|---|---|
+| `DEVELOPER.md` | Full architecture reference |
+| `SPEC_DIGEST.md` | Testable game-rule assertions with source refs |
+| `HANDOVER.md` | Feed lessons, push behaviour, timed events |
+| `AUDIT_FINDINGS.md` | Known bugs + open questions |
+| `UI_STANDARDS.md` + `BRAND_BOOK.md` | Design system |
+| `js/changelog.js` | Version history (rendered in-app) |

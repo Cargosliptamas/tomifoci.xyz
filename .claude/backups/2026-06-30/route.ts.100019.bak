@@ -37,11 +37,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
   }
 
-  const pinResult = await verifyPlayerPinThrottled(request, player, pin, community)
+  const pinResult = await verifyPlayerPinInNeon(player, pin, community)
   if (!pinResult.ok) {
+    const notProvisioned = pinResult.reason === 'pin-hashes-empty' || pinResult.reason === 'player-pin-not-found'
     return NextResponse.json(
-      { ok: false, error: pinResult.error, ...(pinResult.retryAfterMs ? { retryAfterMs: pinResult.retryAfterMs } : {}) },
-      { status: pinResult.status }
+      { ok: false, error: notProvisioned ? 'auth-not-provisioned' : 'bad-pin' },
+      { status: notProvisioned ? 503 : 401 }
     )
   }
 

@@ -1,0 +1,199 @@
+---
+doc_version: 1.0.0
+doc_type: policy
+doc_status: current
+owner: Tamas Varga
+last_reviewed: 2026-06-30
+privacy: internal
+audience: founder, ai-agent, developer
+freshness: current
+canonical_source: self
+related_docs: CLAUDE.md; AGENTS.md; JOURNAL.md; tasks/plan.md; tasks/todo.md; SPEC_DIGEST.md; design_handoff_vbtippjatek_redesign/README.md
+verification: verified-current
+update_policy: Update when the phase plan, hard rules, stack decisions, or AI execution rules change.
+---
+
+# Tomifoci 2026 — Project Governor
+
+This governor is the operating prompt for the full rewrite of VB Tippjáték 2026.
+It governs how AI threads work in this repo from 2026-06-28 onwards.
+
+---
+
+## 0. Current State (as of 2026-06-30 — migration complete)
+
+The live game now runs on **Next.js + Neon (Postgres) + Vercel**, in the standalone
+**`tomifoci.xyz`** repo (extracted from `apps/rewrite/`). **Neon is the only live
+database.** The original **vanilla JS + Convex + Cloudflare** stack in this repo is the
+**retired legacy "classic"** — kept for reference and as a fallback *source* only. The
+phase plan below is preserved as the historical record of how the migration was run; it
+is no longer an active to-do list.
+
+> Do **not** treat this project as "a Convex app." Convex is retired and read-only.
+
+Key facts:
+- The live product is the `tomifoci.xyz` repo on Vercel; its own `CLAUDE.md` /
+  `.claude/memory.md` are authoritative for the running stack.
+- A classic-UI **fallback** at a `/classic/` path (rewired to read the Neon `/api/state`)
+  is planned but not yet built — see the fallback build plan in the `tomifoci.xyz` repo.
+- `design_handoff_vbtippjatek_redesign/` has the final designs: Concept B player app,
+  Brackets, Admin.
+- `SPEC_DIGEST.md` has all testable game-rule assertions (SCORE-01…INV-15) — still the
+  canonical rules reference.
+
+---
+
+## 1. Hard Rules
+
+1. **Classic game stays live.** Never touch `index 2.html`, `js/*.js`, `css/*.css`, `convex/*`
+   during the rewrite. The only exception is running the export/sync script.
+2. **Database structure is fixed.** Do not add or remove Neon columns unless a new
+   feature explicitly requires it and is approved. The Drizzle schema in
+   `apps/rewrite/db/schema.ts` is the contract.
+3. **Server-Driven UI.** Every player-facing and admin-facing screen must be backed by
+   a SurfaceDefinition from `@rhnd/server-driven-ui-*`. The server owns the component tree;
+   the client renders what the server says.
+4. **Backend-first.** Every frontend function must have a corresponding API route + DB query
+   before the component is built. No orphan UI.
+5. **Convex is source of truth until Neon sync is verified.** After sync is verified and
+   diffed, Convex is archived (read-only). Never write to Convex from the rewrite app.
+6. **Game mechanics are extracted, not reimplemented.** Copy `calcPts`, `getActiveFav`,
+   Wizard scoring, and Swiss compute from `convex/scoring.ts` / `convex/wizard.ts` /
+   `convex/swiss.ts` into `packages/game-engine/`. Do not invent new rules.
+7. **Verify before claim.** Before stating a file, function, route, or package exists:
+   check it. Do not invent paths or API names.
+8. **Journal every session.** Append an entry to `JOURNAL.md` at the end of each session.
+   Follow the RHND journal format (frontmatter + dated sections).
+
+---
+
+## 2. Build Loop (per session)
+
+1. Read this governor.
+2. Read `tasks/todo.md` — find the first unchecked item.
+3. Read only the files directly referenced by that task.
+4. Implement the task.
+5. Run the task's verification commands.
+6. Check off the item in `tasks/todo.md`.
+7. Append to `JOURNAL.md`.
+8. Stop — do not continue to the next phase unless the user asks.
+
+---
+
+## 3. Stack Decisions
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Monorepo | Turborepo (already configured) | `turbo.json` at root |
+| Frontend | Next.js 16 (App Router) | `apps/rewrite/` |
+| Styling | Tailwind CSS v4 + `@rhnd/tailwind-ui` | BROADCAST token mapping |
+| UI pattern | `@rhnd/server-driven-ui-next` | SurfaceDefinition per screen |
+| Database | Neon (Postgres) via `@neondatabase/serverless` | Drizzle ORM |
+| Auth | PIN hash (bcrypt/argon2id) stored in Neon `imported_rows` | No JWT initially |
+| Cron | Vercel cron (`vercel.json` `crons`) | Replace Convex crons |
+| Push | `web-push` library, subscriptions in Neon | Same VAPID keys |
+| Classic backup | `/classic/` path in Next.js, proxies or static | Until smoke tests pass |
+
+---
+
+## 4. Model Assignment
+
+> Rule: one thread per model/phase (prompt cache is per-model; cross-model threads re-send
+> growing context and destroy cache efficiency). Set the model before the first message.
+
+| Phase | Tag | Model |
+|---|---|---|
+| P0 Housekeeping | `P0.Sonnet` | Sonnet |
+| P1 Neon Sync | `P1.Sonnet` | Sonnet |
+| P2 Backend routes | `P2.Sonnet` / `P2-SEC.Opus` | Sonnet (Opus for auth routes) |
+| P3 Game engine | `P3.Sonnet` | Sonnet |
+| P4 Surface layer | `P4.Sonnet` / `P4-SEC.Opus` | Sonnet (Opus for HMAC/policy) |
+| P5 Frontend | `P5.Sonnet` | Sonnet |
+| P6 Integrations | `P6.Sonnet` | Sonnet |
+| P7 Mechanics comparison | `P7.Haiku` | **Haiku** — 60 structured assertions, pass/fail classification |
+| P8 Cutover | `P8.Sonnet` | Sonnet |
+| Each checkpoint security gate | `CHK.Opus` | **Opus** — security review |
+
+---
+
+## 5. Phase Plan
+
+Phases are sequential. Each phase ends with a verification gate before the next starts.
+
+### Phase 0 — Housekeeping
+Outcome: docs in order, packages installed, old plans archived.
+
+### Phase 1 — Neon Sync
+Outcome: all Convex tables mirrored in Neon; state diff passes; Convex archived.
+
+### Phase 2 — Backend Data Layer
+Outcome: for every entity, a typed read route (GET) and write route (POST/PUT/DELETE)
+backed by Neon. All routes map 1:1 to the functional inventory (BE-001…BE-034).
+
+### Phase 3 — Game Engine Package
+Outcome: `packages/game-engine/` contains pure TS functions: `calcPts`, `getActiveFav`,
+`computeAllScores`, `computeWizardScores`, `computeSwiss`. Tested against SPEC_DIGEST.
+
+### Phase 4 — Server-Driven UI Surface Layer
+Outcome: every screen has a SurfaceDefinition in `apps/rewrite/lib/surfaces/`.
+The surface registry covers: landing, login, meccsek, tabella, profil, brackets, admin/*.
+
+### Phase 5 — Frontend
+Outcome: all screens from Concept B + Brackets + Admin built in Next.js using
+Tailwind UI components. Design matches `design_handoff_vbtippjatek_redesign/README.md` exactly.
+
+### Phase 6 — Integrations
+Outcome: Vercel cron replaces Convex crons for LiveScore polling, auto-recompute,
+Swiss auto-publish. Web push works with existing subscriptions.
+
+### Phase 7 — Mechanics Comparison & Smoke Tests
+Outcome: every SPEC_DIGEST assertion (SCORE-01…SWISS-18, INV-01…INV-15) checked
+against the new engine. Differences documented in `tasks/mechanics-diff.md`.
+
+### Phase 8 — Cutover
+Outcome: DNS switched to Vercel. Classic game frozen. Old Cloudflare/Convex on standby.
+
+---
+
+## 5. Invariants (must hold throughout)
+
+All invariants from `SPEC_DIGEST.md` (INV-01…INV-15) apply to the new stack unchanged:
+- INV-01: predictions + results are immutable truth; everything else derived.
+- INV-02: player identity = name string; cascades on rename/delete.
+- INV-03: recompute pipeline runs in order after every truth mutation.
+- INV-09: secrets never in public state response.
+- INV-10: kickoff lock enforced server-side.
+
+---
+
+## 6. Security Baseline
+
+- Admin PIN: bcrypt hash in Neon `imported_rows`, never in session/local storage.
+- Player PIN: same. Server-side verification only.
+- Rate limiting on auth routes: escalating lockout (mirror `authAttempts` table).
+- Server actions: every mutating surface action requires re-verification of PIN or
+  admin session token.
+- SurfaceDefinition signatures: use HMAC-SHA256 from `@rhnd/server-driven-ui-core`.
+
+---
+
+## 7. Journaling Protocol
+
+Append to `JOURNAL.md` after each working session:
+
+```markdown
+## YYYY-MM-DD — Phase N Session N: <one-line title>
+
+### Completed
+- [task-id] Brief description — file:line
+
+### Not Completed (and why)
+- …
+
+### Verification
+- `pnpm typecheck` — PASS / FAIL
+- `pnpm test` — PASS / FAIL / n tests
+
+### Next Action
+[First task for the next session, exact todo id]
+```

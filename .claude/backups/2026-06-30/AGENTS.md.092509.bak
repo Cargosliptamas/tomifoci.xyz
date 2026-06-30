@@ -1,0 +1,105 @@
+# AGENTS.md — Tomifoci 2026 Rewrite
+
+> ⚠️ **Migration complete (2026-06-30).** The live game runs on **Next.js + Neon + Vercel**
+> in the standalone **`tomifoci.xyz`** repo; **Neon is the only live database** and Convex is
+> retired/read-only. This repo is the legacy *source*. The phase plan below is the historical
+> record of the migration, not an active to-do list.
+>
+> Agent delegation guide. Read this before spawning any sub-agent.
+> Pairs with `CLAUDE.md` (legacy stack reference) and `docs/governors/PROJECT-GOVERNOR.md` (rules).
+
+---
+
+## Context Every Agent Must Read First
+
+1. `docs/governors/PROJECT-GOVERNOR.md` — operating rules + hard constraints
+2. `CLAUDE.md` — stack, run commands, critical invariants
+3. `tasks/todo.md` — current task list (find the first unchecked item)
+
+If a task references `SPEC_DIGEST.md` — read it before acting.  
+If a task references a design file (`design_handoff_vbtippjatek_redesign/`) — read the README first.
+
+---
+
+## Agent Delegation Table
+
+> **One thread per model/phase.** A new model = a new thread. Carry state in a
+> low-token handover doc (JOURNAL.md + tasks/todo.md), not the conversation.
+> Set the model in Claude Code before the first message of each phase.
+
+| Phase | Tag | Task type | Model | Rationale |
+|---|---|---|---|---|
+| P0 | `P0.Sonnet` | Housekeeping / file moves | **Sonnet** | Simple IO; no reasoning needed |
+| P1 | `P1.Sonnet` | Neon sync + data verification | **Sonnet** | Script execution + count diffing |
+| P2-T1 | `P2-T1.Sonnet` | Shared auth/DB infra | **Sonnet** | Standard typed TS; well-specified |
+| P2-T2…T11 | `P2.Sonnet` | Backend API routes | **Sonnet** | One route per session; all routes spec'd in inventory |
+| P2-T3 security | `P2-SEC.Opus` | Auth routes (PIN, rate-limit) | **Opus** | Cross-domain security; subtle invariants |
+| P3-T1…T4 | `P3.Sonnet` | Game engine extraction + tests | **Sonnet** | Mechanical extraction from convex/; rules documented in SPEC_DIGEST |
+| P4-T1 | `P4-T1.Sonnet` | Surface registry + HMAC setup | **Sonnet** | Architecture well-specified in RHND docs |
+| P4-T1 signing | `P4-SEC.Opus` | HMAC key ring + security tier policy | **Opus** | Security architecture; replay guards |
+| P4-T2…T3 | `P4.Sonnet` | Surface resolvers | **Sonnet** | Data read + SurfaceDefinition assembly; no novel reasoning |
+| P5-T1 | `P5-T1.Sonnet` | Shell layout + BROADCAST tokens | **Sonnet** | CSS config from design spec |
+| P5-T2…T7 | `P5.Sonnet` | Screen implementation | **Sonnet** | UI from design files; one screen per session |
+| P6-T1…T2 | `P6.Sonnet` | Cron + integrations | **Sonnet** | Standard infrastructure plumbing |
+| P7-T1 | `P7.Haiku` | Mechanics comparison (60 assertions) | **Haiku** | Structured pass/fail classification against SPEC_DIGEST; ideal Haiku task at 5x savings |
+| P8-T1 | `P8.Sonnet` | Cutover + smoke tests | **Sonnet** | Procedural checklist |
+| Each checkpoint | `CHK.Opus` | Security review at checkpoint | **Opus** | Auth/PIN/HMAC review before phase sign-off |
+
+### Cost note (P7.Haiku)
+60 SPEC_DIGEST assertions × ~500 tokens each = 30K tokens total.
+- Sonnet: 30K × $3/MTok = $0.09
+- Haiku: 30K × $1/MTok = $0.03
+Savings small in absolute terms, but Haiku is the right tool for structured classification.
+Flag any assertion as "uncertain" → escalate that specific one to Sonnet.
+
+---
+
+## Hard Rules for All Agents
+
+1. **Never touch classic game files.** `index 2.html`, `js/*.js`, `css/*.css`, `convex/*.ts`, `sw.js` — read-only for reference.
+2. **Never write to Convex.** The migration script is one-time; `convex/*.ts` are archived.
+3. **Never change `apps/rewrite/db/schema.ts` columns** without explicit founder approval.
+4. **Verify before stating.** Before claiming a function or file exists: check it.
+5. **One task per session.** Do not skip ahead to the next phase task without user confirmation.
+6. **Journal every session.** Append to `JOURNAL.md` using the format in the governor.
+
+---
+
+## Parallelism Rules
+
+**Safe to parallelize:**
+- Phase 2 backend route tasks (P2-T3 through P2-T10) after P2-T1 is done — routes are independent
+- Phase 3 game engine tasks (P3-T1 through P3-T4) — each engine is independent
+- Phase 5 frontend screen tasks (P5-T2 through P5-T6) after P5-T1 is done — screens are independent
+
+**Must be sequential:**
+- P1-T1 → P1-T2 → P1-T3 (sync before verify before archive)
+- P2-T1 → everything in Phase 2 (shared infra must come first)
+- P2-T11 (recompute) must come before P4-T1 (surfaces depend on working recompute)
+- P4-T1 → P4-T2 → P4-T3 (registry before resolvers)
+- P5-T1 (layout) must come before all other Phase 5 tasks
+- Phase 8 requires founder approval
+
+**Requires coordination (shared API contract):**
+- Game engine (P3) and backend routes (P2) share `PlayerScore`, `WizardScore`, `SwissStandings` types.
+  Define the types in `packages/game-engine/src/types.ts` first, then both phases can parallelize.
+
+---
+
+## Checkpoints (must pass before next phase)
+
+After each phase completes, run:
+```bash
+cd apps/rewrite && pnpm typecheck    # zero errors
+pnpm test                            # all tests pass
+```
+Then run `/code-review` before marking the checkpoint done.
+
+---
+
+## What to Do on Conflict or Uncertainty
+
+1. If a SPEC_DIGEST assertion is unclear: note it in `tasks/mechanics-diff.md` with "OQ-N" label.
+2. If an open product decision blocks implementation: stub with a feature flag and document in JOURNAL.md.
+3. If Neon data doesn't match Convex: do not proceed — surface the diff to the founder.
+4. If game engine output differs from Convex output: treat as a bug, fix before Phase 7.

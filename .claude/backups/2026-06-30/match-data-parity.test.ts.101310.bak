@@ -1,0 +1,61 @@
+import { describe, it, expect } from 'vitest'
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { runInNewContext } from 'node:vm'
+import { MATCH_META } from '../lib/engine/match-meta'
+
+// C2 drift-guard: MATCH_META (the engine's scoring source) must stay in lockstep with the
+// classic data.js MATCHES (used by the classic UI + livescore mapping). If they diverge,
+// the lock, the display, and the scoring can silently disagree. This test fails loudly on
+// any id/stage/team-name drift between the two.
+
+type DjMatch = { id: number; stage: string; home: string; away: string }
+
+function loadDataJsMatches(): DjMatch[] {
+  const candidates = [
+    join(process.cwd(), 'public', 'classic', 'data.js'),
+    join(process.cwd(), 'apps', 'rewrite', 'public', 'classic', 'data.js'),
+    join(process.cwd(), 'data.js')
+  ]
+  for (const c of candidates) {
+    if (!existsSync(c)) continue
+    const ctx: Record<string, unknown> = {}
+    runInNewContext(
+      `${readFileSync(c, 'utf8')}\n;globalThis.__M__ = MATCHES.map(({ id, stage, home, away }) => ({ id, stage, home, away }));`,
+      ctx,
+      { timeout: 1000 }
+    )
+    return (ctx.__M__ as DjMatch[]) ?? []
+  }
+  throw new Error('classic data.js not found in any candidate path')
+}
+
+describe('C2: MATCH_META (scoring source) ⇔ classic data.js parity', () => {
+  const dj = loadDataJsMatches()
+  const djById = new Map(dj.map((m) => [Number(m.id), m]))
+
+  it('every data.js match exists in MATCH_META with the same stage', () => {
+    for (const m of dj) {
+      const meta = MATCH_META[Number(m.id)]
+      expect(meta, `id ${m.id} present in data.js but missing from MATCH_META`).toBeDefined()
+      expect(meta.stage, `stage mismatch for id ${m.id}`).toBe(m.stage)
+    }
+  })
+
+  it('every MATCH_META match exists in data.js with the same stage', () => {
+    for (const [idStr, meta] of Object.entries(MATCH_META)) {
+      const m = djById.get(Number(idStr))
+      expect(m, `id ${idStr} present in MATCH_META but missing from data.js`).toBeDefined()
+      expect(m!.stage, `stage mismatch for id ${idStr}`).toBe(meta.stage)
+    }
+  })
+
+  it('group + test team names match (these drive favourite ×2 and scope sets)', () => {
+    for (const [idStr, meta] of Object.entries(MATCH_META)) {
+      if (meta.stage === 'ko') continue // KO names come from koTeams at runtime, not static data
+      const m = djById.get(Number(idStr))!
+      expect(m.home, `home name drift for id ${idStr}`).toBe(meta.h)
+      expect(m.away, `away name drift for id ${idStr}`).toBe(meta.a)
+    }
+  })
+})
