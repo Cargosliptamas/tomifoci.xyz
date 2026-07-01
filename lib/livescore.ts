@@ -25,37 +25,87 @@ const norm = (s: string) => (s || '').toLowerCase().normalize('NFC').trim()
 // live.json gives team names as nested ENGLISH (m.home.name = "Brazil"), not the hu
 // translations fixtures.json carries. Map the WC field to our canonical hu names.
 const EN_HU: Record<string, string> = {
-  Brazil: 'Brazília', Japan: 'Japán', Germany: 'Németország', Paraguay: 'Paraguay',
-  Netherlands: 'Hollandia', Morocco: 'Marokkó', 'Ivory Coast': 'Elefántcsontpart', Norway: 'Norvégia',
-  France: 'Franciaország', Sweden: 'Svédország', Mexico: 'Mexikó', Ecuador: 'Ecuador',
-  England: 'Anglia', 'DR Congo': 'Kongói DK', Belgium: 'Belgium', Senegal: 'Szenegál',
-  USA: 'Egyesült Államok', 'United States': 'Egyesült Államok', 'Bosnia and Herzegovina': 'Bosznia-Hercegovina',
-  Spain: 'Spanyolország', Austria: 'Ausztria', Portugal: 'Portugália', Croatia: 'Horvátország',
-  Switzerland: 'Svájc', Algeria: 'Algéria', Australia: 'Ausztrália', Egypt: 'Egyiptom',
-  Argentina: 'Argentína', 'Cape Verde': 'Zöld-foki-szigetek', Colombia: 'Kolumbia', Ghana: 'Ghána',
-  'South Africa': 'Dél-Afrika', Canada: 'Kanada', 'South Korea': 'Dél-Korea', Qatar: 'Katar',
-  Uruguay: 'Uruguay', Tunisia: 'Tunézia', Iran: 'Irán', Iraq: 'Irak', Jordan: 'Jordánia',
-  Uzbekistan: 'Üzbegisztán', Panama: 'Panama', Haiti: 'Haiti', Scotland: 'Skócia',
-  Curacao: 'Curacao', 'New Zealand': 'Új-Zéland', 'Saudi Arabia': 'Szaúd-Arábia'
+  Brazil: 'Brazília',
+  Japan: 'Japán',
+  Germany: 'Németország',
+  Paraguay: 'Paraguay',
+  Netherlands: 'Hollandia',
+  Morocco: 'Marokkó',
+  'Ivory Coast': 'Elefántcsontpart',
+  Norway: 'Norvégia',
+  France: 'Franciaország',
+  Sweden: 'Svédország',
+  Mexico: 'Mexikó',
+  Ecuador: 'Ecuador',
+  England: 'Anglia',
+  'DR Congo': 'Kongói DK',
+  Belgium: 'Belgium',
+  Senegal: 'Szenegál',
+  USA: 'Egyesült Államok',
+  'United States': 'Egyesült Államok',
+  'Bosnia and Herzegovina': 'Bosznia-Hercegovina',
+  Spain: 'Spanyolország',
+  Austria: 'Ausztria',
+  Portugal: 'Portugália',
+  Croatia: 'Horvátország',
+  Switzerland: 'Svájc',
+  Algeria: 'Algéria',
+  Australia: 'Ausztrália',
+  Egypt: 'Egyiptom',
+  Argentina: 'Argentína',
+  'Cape Verde': 'Zöld-foki-szigetek',
+  Colombia: 'Kolumbia',
+  Ghana: 'Ghána',
+  'South Africa': 'Dél-Afrika',
+  Canada: 'Kanada',
+  'South Korea': 'Dél-Korea',
+  Qatar: 'Katar',
+  Uruguay: 'Uruguay',
+  Tunisia: 'Tunézia',
+  Iran: 'Irán',
+  Iraq: 'Irak',
+  Jordan: 'Jordánia',
+  Uzbekistan: 'Üzbegisztán',
+  Panama: 'Panama',
+  Haiti: 'Haiti',
+  Scotland: 'Skócia',
+  Curacao: 'Curacao',
+  'New Zealand': 'Új-Zéland',
+  'Saudi Arabia': 'Szaúd-Arábia'
 }
 // Bracket path: which next-round slot each KO match feeds into (winner fills home/away).
 // SF losers additionally fill the 3rd-place match (103); see advanceBracket below.
 const BRACKET_PATH: Record<number, { next: number; home: boolean }> = {
-  73: { next: 89, home: true },  74: { next: 89, home: false },
-  75: { next: 90, home: true },  76: { next: 90, home: false },
-  77: { next: 91, home: true },  78: { next: 91, home: false },
-  79: { next: 92, home: true },  80: { next: 92, home: false },
-  81: { next: 93, home: true },  82: { next: 93, home: false },
-  83: { next: 94, home: true },  84: { next: 94, home: false },
-  85: { next: 95, home: true },  86: { next: 95, home: false },
-  87: { next: 96, home: true },  88: { next: 96, home: false },
-  89: { next: 97, home: true },  90: { next: 97, home: false },
-  91: { next: 98, home: true },  92: { next: 98, home: false },
-  93: { next: 99, home: true },  94: { next: 99, home: false },
-  95: { next: 100, home: true }, 96: { next: 100, home: false },
-  97: { next: 101, home: true }, 98: { next: 101, home: false },
-  99: { next: 102, home: true }, 100: { next: 102, home: false },
-  101: { next: 104, home: true }, 102: { next: 104, home: false },
+  73: { next: 89, home: true },
+  74: { next: 89, home: false },
+  75: { next: 90, home: true },
+  76: { next: 90, home: false },
+  77: { next: 91, home: true },
+  78: { next: 91, home: false },
+  79: { next: 92, home: true },
+  80: { next: 92, home: false },
+  81: { next: 93, home: true },
+  82: { next: 93, home: false },
+  83: { next: 94, home: true },
+  84: { next: 94, home: false },
+  85: { next: 95, home: true },
+  86: { next: 95, home: false },
+  87: { next: 96, home: true },
+  88: { next: 96, home: false },
+  89: { next: 97, home: true },
+  90: { next: 97, home: false },
+  91: { next: 98, home: true },
+  92: { next: 98, home: false },
+  93: { next: 99, home: true },
+  94: { next: 99, home: false },
+  95: { next: 100, home: true },
+  96: { next: 100, home: false },
+  97: { next: 101, home: true },
+  98: { next: 101, home: false },
+  99: { next: 102, home: true },
+  100: { next: 102, home: false },
+  101: { next: 104, home: true },
+  102: { next: 104, home: false }
 }
 
 function winnerTeam(
@@ -115,6 +165,21 @@ function parseScore(s: unknown): { h: number; a: number } | null {
   return m ? { h: Number(m[1]), a: Number(m[2]) } : null
 }
 
+function mergeEventCache(prev: any, next: any) {
+  const cachedEvents = Array.isArray(prev?.events) ? prev.events : []
+  const nextEvents = Array.isArray(next?.events) ? next.events : []
+  return {
+    ...prev,
+    ...next,
+    events: nextEvents.length > 0 ? nextEvents : cachedEvents,
+    lineups: next?.lineups ?? prev?.lineups ?? null,
+    odds: next?.odds ?? prev?.odds ?? null,
+    status: next?.status || prev?.status || '',
+    venue: next?.venue ?? prev?.venue ?? null,
+    htScore: next?.htScore ?? prev?.htScore ?? null
+  }
+}
+
 function loadDataFixtures(): Array<{ id: number; home: string; away: string; stage: string }> {
   for (const p of [join(process.cwd(), 'public', 'classic', 'data.js'), join(process.cwd(), 'data.js')]) {
     try {
@@ -137,7 +202,15 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
   const key = process.env.LS_KEY
   const secret = process.env.LS_SECRET
   if (!key || !secret) {
-    return { ok: false, fixturesSeen: 0, oddsMapped: 0, resultsWritten: 0, unmatched: 0, ts: Date.now(), error: 'ls-not-configured' }
+    return {
+      ok: false,
+      fixturesSeen: 0,
+      oddsMapped: 0,
+      resultsWritten: 0,
+      unmatched: 0,
+      ts: Date.now(),
+      error: 'ls-not-configured'
+    }
   }
   const sql = getSql()
 
@@ -177,8 +250,21 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
 
   const oddsMap: Record<number, { h: number; x: number; a: number }> = {}
   const results: Record<number, { h: number; a: number; penH?: number; penA?: number }> = {}
-  // Collected during history loop: feed apiId + htScore per our match id (for event fetching).
-  const apiIdMap: Record<number, { apiId: string; reversed: boolean; htScore: { h: number; a: number } | null }> = {}
+  // Collected during history/live loops: feed apiId + htScore per our match id (for event fetching).
+  const apiIdMap: Record<
+    number,
+    { apiId: string; reversed: boolean; htScore: { h: number; a: number } | null }
+  > = {}
+  const liveApiIdMap: Record<
+    number,
+    {
+      apiId: string
+      reversed: boolean
+      htScore: { h: number; a: number } | null
+      status: string
+      venue: string | null
+    }
+  > = {}
   let fixturesSeen = 0
   let unmatched = 0
 
@@ -216,7 +302,10 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         continue
       }
       for (const m of data?.match ?? data ?? []) {
-        const ref = findId(canon(m.home_translations?.hu || m.home_name), canon(m.away_translations?.hu || m.away_name))
+        const ref = findId(
+          canon(m.home_translations?.hu || m.home_name),
+          canon(m.away_translations?.hu || m.away_name)
+        )
         if (!ref) continue
         const sc = parseScore(m.ft_score || m.score)
         if (!sc) continue
@@ -225,7 +314,9 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         const penRaw = m.pen_score || m.penalty_score || m.penalties || ''
         const penSc = parseScore(penRaw)
         const penOriented = penSc
-          ? ref.reversed ? { penH: penSc.a, penA: penSc.h } : { penH: penSc.h, penA: penSc.a }
+          ? ref.reversed
+            ? { penH: penSc.a, penA: penSc.h }
+            : { penH: penSc.h, penA: penSc.a }
           : {}
         results[ref.id] = { ...oriented, ...penOriented }
         // Collect apiId + htScore so we can batch-fetch events for newly-finished matches.
@@ -234,9 +325,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           if (apiId) {
             const htRaw = m.ht_score || m.half_time_score || ''
             const htParsed = parseScore(htRaw)
-            const htScore = htParsed
-              ? ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed
-              : null
+            const htScore = htParsed ? (ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed) : null
             apiIdMap[ref.id] = { apiId, reversed: ref.reversed, htScore }
           }
         }
@@ -266,6 +355,25 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           a: oriented.a,
           elapsed: String(m.time ?? m.elapsed ?? ''),
           status: String(m.status ?? '')
+        }
+        const apiId = String(m.id || m.match_id || '')
+        if (apiId) {
+          const htParsed = parseScore(
+            m.ht_score || m.half_time_score || m.scores?.ht_score || m.scores?.ht || ''
+          )
+          const htScore = htParsed ? (ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed) : null
+          const venue =
+            m.location ||
+            (typeof m.venue === 'string' ? m.venue : m.venue?.name) ||
+            stadiumOf(MATCH_BY_ID[ref.id]?.venue ?? null) ||
+            null
+          liveApiIdMap[ref.id] = {
+            apiId,
+            reversed: ref.reversed,
+            htScore,
+            status: String(m.status ?? ''),
+            venue
+          }
         }
       }
     }
@@ -329,23 +437,57 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
     // ── Batch event fetching for newly-completed matches ─────────────────────
     // Fetch and permanently cache events for finished matches that don't yet have an
     // events_<matchId> entry. Capped at 8 fetches per poll to avoid quota burns.
-    const existingEventKeys = new Set<string>()
+    const existingEventPayloads = new Map<string, any>()
     try {
       const evRows = await sql`
-        SELECT convex_id FROM imported_rows
+        SELECT convex_id, payload FROM imported_rows
         WHERE table_name = 'apiCache' AND convex_id LIKE 'events_%'
       `
-      for (const r of evRows as Array<{ convex_id: string }>) existingEventKeys.add(r.convex_id)
-    } catch { /* best-effort */ }
+      for (const r of evRows as Array<{ convex_id: string; payload: any }>)
+        existingEventPayloads.set(r.convex_id, r.payload)
+    } catch {
+      /* best-effort */
+    }
 
     let evFetched = 0
     const MAX_EV_FETCH = 8
+    for (const [mid, info] of Object.entries(liveApiIdMap)) {
+      if (evFetched >= MAX_EV_FETCH) break
+      const matchId = Number(mid)
+      const cacheKey = `events_${matchId}`
+      try {
+        const evData = await ls(key, secret, '/scores/events.json', { id: info.apiId })
+        const events = parseEvents(evData, info.reversed)
+        const evMatchObj = evData?.match ?? (Array.isArray(evData) ? evData[0] : null)
+        const venue =
+          evMatchObj?.location ||
+          (typeof evMatchObj?.venue === 'string' ? evMatchObj.venue : evMatchObj?.venue?.name) ||
+          info.venue ||
+          stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
+          null
+        const data = mergeEventCache(existingEventPayloads.get(cacheKey)?.data, {
+          events,
+          lineups: null,
+          odds: null,
+          status: info.status || 'LIVE',
+          venue,
+          htScore: info.htScore
+        })
+        await upsertImportedRow('apiCache', cacheKey, { kind: cacheKey, ts: Date.now(), data })
+        existingEventPayloads.set(cacheKey, { data })
+        evFetched++
+      } catch {
+        /* skip this match, retry next poll */
+      }
+    }
+
     const now2 = Date.now()
     for (const [mid, info] of Object.entries(apiIdMap)) {
       if (evFetched >= MAX_EV_FETCH) break
       const matchId = Number(mid)
       const cacheKey = `events_${matchId}`
-      if (existingEventKeys.has(cacheKey)) continue
+      const existing = existingEventPayloads.get(cacheKey)?.data
+      if (Array.isArray(existing?.events) && existing.events.length > 0) continue
       if (!isKickedOff(matchId, now2)) continue
       try {
         const evData = await ls(key, secret, '/scores/events.json', { id: info.apiId })
@@ -353,21 +495,38 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
         // Venue: try from events response, then fall back to fixture STADIUMS map.
         const evMatchObj = evData?.match ?? (Array.isArray(evData) ? evData[0] : null)
         const venue =
-          (evMatchObj?.location) ||
+          evMatchObj?.location ||
           (typeof evMatchObj?.venue === 'string' ? evMatchObj.venue : evMatchObj?.venue?.name) ||
           stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
           null
+        const data = mergeEventCache(existing, {
+          events,
+          lineups: null,
+          odds: null,
+          status: 'FT',
+          venue,
+          htScore: info.htScore
+        })
         await upsertImportedRow('apiCache', cacheKey, {
           kind: cacheKey,
           ts: Date.now(),
-          data: { events, lineups: null, odds: null, status: 'FT', venue, htScore: info.htScore }
+          data
         })
-        existingEventKeys.add(cacheKey)
+        existingEventPayloads.set(cacheKey, { data })
         evFetched++
-      } catch { /* skip this match, retry next poll */ }
+      } catch {
+        /* skip this match, retry next poll */
+      }
     }
 
-    return { ok: true, fixturesSeen, oddsMapped: Object.keys(oddsMap).length, resultsWritten, unmatched, ts: Date.now() }
+    return {
+      ok: true,
+      fixturesSeen,
+      oddsMapped: Object.keys(oddsMap).length,
+      resultsWritten,
+      unmatched,
+      ts: Date.now()
+    }
   } catch (error) {
     return {
       ok: false,
@@ -487,7 +646,11 @@ function evTruthy(x: unknown): boolean {
 function evSide(e: any): 'h' | 'a' {
   if (evTruthy(e.is_away)) return 'a'
   if (evTruthy(e.is_home)) return 'h'
-  return String(e.home_away || e.side || '').toLowerCase().startsWith('a') ? 'a' : 'h'
+  return String(e.home_away || e.side || '')
+    .toLowerCase()
+    .startsWith('a')
+    ? 'a'
+    : 'h'
 }
 
 function teamNameOf(t: any): string {
@@ -511,7 +674,8 @@ async function ourTeamNames(matchId: number): Promise<{ home: string; away: stri
   if (!fx) return null
   if (fx.stage === 'ko') {
     const sql = getSql()
-    const rows = await sql`SELECT payload FROM imported_rows WHERE table_name = 'koTeams' AND convex_id = ${String(matchId)} LIMIT 1`
+    const rows =
+      await sql`SELECT payload FROM imported_rows WHERE table_name = 'koTeams' AND convex_id = ${String(matchId)} LIMIT 1`
     const ko = (rows as Array<{ payload: any }>)[0]?.payload
     if (ko?.home && ko?.away) return { home: ko.home, away: ko.away }
     return null // KO slot still a placeholder ("A2.") — can't match the feed yet
@@ -554,13 +718,13 @@ function parseEvents(data: any, reversed: boolean): MatchEvent[] {
   const raw: any[] = data?.event ?? data?.events ?? []
   const out: Array<{ ev: MatchEvent; sort: number }> = []
   raw.forEach((e, i) => {
-    const key = String(e.event || e.type || '').toUpperCase().trim()
+    const key = String(e.event || e.type || '')
+      .toUpperCase()
+      .trim()
     const type = EVENT_TYPE[key]
     if (!type) return
     const player = typeof e.player === 'string' ? e.player : e.player?.name || e.player_name || ''
-    const sub = typeof e.info === 'object' && e.info
-      ? (e.info.name || '')
-      : (e.player_2 || e.substitute || '')
+    const sub = typeof e.info === 'object' && e.info ? e.info.name || '' : e.player_2 || e.substitute || ''
     let team = evSide(e)
     if (reversed) team = team === 'h' ? 'a' : 'h'
     const ev: MatchEvent = { minute: String(e.time ?? e.minute ?? ''), type, player, team }
@@ -658,9 +822,7 @@ export async function fetchMatchCentre(matchId: number): Promise<MatchCentre> {
   // Half-time score
   const htRaw = matchObj?.ht_score || matchObj?.half_time_score || ''
   const htParsed = parseScore(htRaw)
-  const htScore = htParsed
-    ? ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed
-    : null
+  const htScore = htParsed ? (ref.reversed ? { h: htParsed.a, a: htParsed.h } : htParsed) : null
 
   return { events, lineups, odds, status, venue, htScore }
 }

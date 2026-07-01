@@ -40,7 +40,15 @@ describe('buildPublicState — secret stripping (INV-09)', () => {
 
   it('returns the expected top-level shape', () => {
     const state = buildPublicState(tables, { community: 'hu' })
-    for (const key of ['settings', 'predictions', 'results', 'favorites', 'scores', 'rankings', 'wizardPicks']) {
+    for (const key of [
+      'settings',
+      'predictions',
+      'results',
+      'favorites',
+      'scores',
+      'rankings',
+      'wizardPicks'
+    ]) {
       expect(state).toHaveProperty(key)
     }
   })
@@ -76,7 +84,12 @@ describe('buildPublicState — score + ranking via the engine (C1)', () => {
 
   it('doubles favourite match points and ranks players by points', () => {
     const state = buildPublicState(tables, { community: 'hu' })
-    const board = state.rankings[encodeClientKey('all_Mindenki')] as Array<{ name: string; pts: number; exact: number; counted: number }>
+    const board = state.rankings[encodeClientKey('all_Mindenki')] as Array<{
+      name: string
+      pts: number
+      exact: number
+      counted: number
+    }>
     expect(board).toBeDefined()
     // Anna: match1 exact(5) ×2 fav = 10, match3 exact(5) = 15 total, 2 exacts.
     expect(board[0]).toMatchObject({ name: 'Anna', pts: 15, exact: 2, counted: 2 })
@@ -91,20 +104,55 @@ describe('buildPublicState — score + ranking via the engine (C1)', () => {
   })
 })
 
+describe('buildPublicState — match centre events from apiCache', () => {
+  it('exposes cached goals/cards/subs and half-time score as public presentation state only', () => {
+    const tables = {
+      settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
+      predictions: [],
+      results: [{ matchId: 1, h: 2, a: 1 }],
+      apiCache: [
+        {
+          kind: 'events_1',
+          ts: 123,
+          data: {
+            events: [
+              { minute: '12', type: 'goal', player: 'Scorer', team: 'h' },
+              { minute: '58', type: 'yellow', player: 'Booked', team: 'a' },
+              { minute: '70', type: 'sub', player: 'In', sub: 'Out', team: 'h' }
+            ],
+            htScore: { h: 1, a: 0 }
+          }
+        }
+      ]
+    }
+
+    const state = buildPublicState(tables, { community: 'hu' })
+    expect(state.matchEvents?.['1']).toEqual(tables.apiCache[0].data.events)
+    expect(state.matchScores?.['1']).toEqual({ ht: { h: 1, a: 0 } })
+    // Scoring still comes only from result truth; events do not add points.
+    expect((state.scores[encodeClientKey('Anna')] as { pts: number }).pts).toBe(0)
+  })
+})
+
 // Wizard of ODDS must SCORE LIVE from the engine, not from a frozen snapshot.
 describe('buildPublicState — live Wizard of ODDS ranking', () => {
   const tables = {
     settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }, { name: 'Béla' }, { name: 'Cili' }] }],
     predictions: [
-      // mirror-derived picks (no wizardProfiles → default active+mirror)
+      // mirror-derived picks for explicitly joined players
       { player: 'Anna', matchId: 1, h: 2, a: 0, community: 'hu' }, // pick '1'
       { player: 'Anna', matchId: 3, h: 0, a: 0, community: 'hu' }, // pick 'X'
       { player: 'Béla', matchId: 1, h: 0, a: 1, community: 'hu' }, // pick '2'
-      { player: 'Cili', matchId: 1, h: 1, a: 0, community: 'hu' }, // pick '1'
+      { player: 'Cili', matchId: 1, h: 1, a: 0, community: 'hu' } // pick '1'
     ],
     results: [
       { matchId: 1, h: 2, a: 0 }, // actual '1'
-      { matchId: 3, h: 0, a: 0 }, // actual 'X'
+      { matchId: 3, h: 0, a: 0 } // actual 'X'
+    ],
+    wizardProfiles: [
+      { player: 'Anna', active: true, mirror: true },
+      { player: 'Béla', active: true, mirror: true },
+      { player: 'Cili', active: true, mirror: true }
     ],
     // odds repair source for the mirror picks (oddsAtPick starts at 0)
     apiCache: [
@@ -113,10 +161,10 @@ describe('buildPublicState — live Wizard of ODDS ranking', () => {
         ts: 1,
         data: {
           '1': { home: 1.8, draw: 3.5, away: 4.2 },
-          '3': { home: 2.0, draw: 3.0, away: 3.5 },
-        },
-      },
-    ],
+          '3': { home: 2.0, draw: 3.0, away: 3.5 }
+        }
+      }
+    ]
   }
 
   it('computes pts, accuracy and place from picks + results', () => {
@@ -133,23 +181,32 @@ describe('buildPublicState — live Wizard of ODDS ranking', () => {
     // Béla: match1 '2' wrong → 0 pts
     expect(rows[2]).toMatchObject({ name: 'Béla', place: 3, played: 1, accuracy: 0, pts: 0 })
   })
+
+  it('requires an explicit active wizard profile for classic opt-in parity', () => {
+    const state = buildPublicState(
+      { ...tables, wizardProfiles: [{ player: 'Anna', active: true, mirror: true }] },
+      { community: 'hu' }
+    )
+    expect(state.wizardRankings.map((r) => r.name)).toEqual(['Anna'])
+  })
 })
 
 // Swiss / Párbaj standings must be derived live from pairings + predictions + results.
 describe('buildPublicState — live Swiss / Párbaj standings', () => {
   const round1 = SWISS_ROUNDS[0]
   const tables = {
-    settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }, { name: 'Béla' }] }],
+    settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }, { name: 'Béla' }, { name: 'Cili' }] }],
     predictions: [
       ...round1.map((matchId) => ({ player: 'Anna', matchId, h: 1, a: 0, community: 'hu' })), // 5 pts each
-      ...round1.map((matchId) => ({ player: 'Béla', matchId, h: 0, a: 0, community: 'hu' })), // 0 pts each
+      ...round1.map((matchId) => ({ player: 'Béla', matchId, h: 0, a: 0, community: 'hu' })) // 0 pts each
     ],
     results: round1.map((matchId) => ({ matchId, h: 1, a: 0 })),
     swissProfiles: [
       { player: 'Anna', active: true },
       { player: 'Béla', active: true },
+      { player: 'Cili', active: false }
     ],
-    swissPairings: [{ round: 1, a: 'Anna', b: 'Béla' }],
+    swissPairings: [{ round: 1, a: 'Anna', b: 'Béla' }]
   }
 
   it('derives match points, records, predicted points and Buchholz', () => {
@@ -157,6 +214,7 @@ describe('buildPublicState — live Swiss / Párbaj standings', () => {
     expect(state.swiss).not.toBeNull()
     const standings = state.swiss!.standings
     expect(standings.length).toBe(2)
+    expect(standings.map((r) => r.name)).not.toContain('Cili')
 
     // Anna swept round 1 (8×5 = 40 base pts) → wins the matchup (3 mp)
     expect(standings[0]).toMatchObject({ name: 'Anna', place: 1, mp: 3, w: 1, d: 0, l: 0, predPts: 40 })

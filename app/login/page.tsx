@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { writeSession } from '@/lib/session'
+import { bioHas, bioSupported, bioUnlock, readBioPin, storeBioPin } from '@/lib/local-webauthn'
 import type { GameState } from '@/lib/types'
 
 export default function LoginPage() {
@@ -19,6 +20,9 @@ export default function LoginPage() {
   const [pendingPin, setPendingPin] = useState('')
   const [claimCode, setClaimCode] = useState('')
   const [claimError, setClaimError] = useState<string | null>(null)
+  const [bioAvailable, setBioAvailable] = useState(false)
+  const [bioReady, setBioReady] = useState(false)
+  const [bioError, setBioError] = useState<string | null>(null)
 
   function loadPlayers() {
     setLoadError(null)
@@ -33,6 +37,19 @@ export default function LoginPage() {
   }
 
   useEffect(loadPlayers, [])
+
+  useEffect(() => {
+    if (!selected) {
+      setBioAvailable(false)
+      setBioReady(false)
+      setBioError(null)
+      return
+    }
+    const supported = bioSupported()
+    setBioAvailable(supported)
+    setBioReady(supported && bioHas('player', selected, 'hu'))
+    setBioError(null)
+  }, [selected])
 
   // Automated-test auto-login: /login?as=<name> logs straight in WITHOUT a PIN. The server
   // only honours this for the single TEST_LOGIN_USER (e.g. Firecrawl); for anyone else the
@@ -76,6 +93,7 @@ export default function LoginPage() {
       const json = await res.json().catch(() => ({}))
       // ok => verified. auth-not-provisioned => no PINs seeded yet (dormant): allow in.
       if (json.ok || json.error === 'auth-not-provisioned') {
+        if (bioHas('player', selected, 'hu')) storeBioPin('player', selected, 'hu', nextPin)
         writeSession({ player: selected, pin: nextPin, community: 'hu' })
         router.push('/meccsek')
         return
@@ -112,6 +130,24 @@ export default function LoginPage() {
     const next = pin + key
     setPin(next)
     if (next.length === 4) void submitPin(next)
+  }
+
+  async function unlockWithBio() {
+    if (!selected || busy) return
+    setBusy(true)
+    setBioError(null)
+    setError(null)
+    try {
+      await bioUnlock('player', selected, 'hu')
+      const storedPin = readBioPin('player', selected, 'hu')
+      if (!storedPin) throw new Error('Előbb lépj be PIN-nel ezen az eszközön')
+      writeSession({ player: selected, pin: storedPin, community: 'hu' })
+      router.push('/meccsek')
+    } catch (error) {
+      setBioError(error instanceof Error ? error.message : 'Biometria hiba')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -244,6 +280,9 @@ export default function LoginPage() {
             ))}
           </div>
           {error && <span className="mb-2 text-[13px] font-bold text-[#FF3B30]">{error}</span>}
+          {bioError && (
+            <span className="mb-2 text-center text-[13px] font-bold text-[#FF3B30]">{bioError}</span>
+          )}
 
           <div className="mt-[14px] grid w-[240px] grid-cols-3 gap-3">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((key, i) =>
@@ -265,9 +304,20 @@ export default function LoginPage() {
               )
             )}
           </div>
-          <span className="mt-[18px] text-xs text-[#0D3331]/50">
-            🔒 Biometrikus belépés ezen az eszközön elérhető
-          </span>
+          {bioReady ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void unlockWithBio()}
+              className="tap mt-[18px] rounded-full border border-[#DCEFEE] bg-white px-4 py-2 text-xs font-extrabold text-[#007E73] shadow-[0_1px_3px_rgba(13,51,49,0.05)]"
+            >
+              🪪 Belépés Face ID / Touch ID-val
+            </button>
+          ) : (
+            <span className="mt-[18px] text-center text-xs text-[#0D3331]/50">
+              {bioAvailable ? '🪪 Face ID / Touch ID a Profilban kapcsolható be' : '🔒 PIN védett belépés'}
+            </span>
+          )}
         </div>
       )}
     </div>

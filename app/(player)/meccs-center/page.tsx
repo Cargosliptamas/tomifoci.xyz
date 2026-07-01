@@ -8,13 +8,39 @@ import { useGame } from '@/components/game-provider'
 import { flag, stadiumOf, MATCHES, type Fixture } from '@/lib/fixtures'
 import { countdown, kickoffMs, liveScoreFor, oddsFor, resultFor, statusOf, teamsOf } from '@/lib/derive'
 
+const CARD_EVENT_TYPES = new Set(['goal', 'goal_penalty', 'own_goal', 'yellow', 'red', 'yellow_red'])
+const CARD_ICON: Record<string, string> = {
+  goal: '⚽',
+  goal_penalty: '⚽',
+  own_goal: '⚽',
+  yellow: '🟨',
+  red: '🟥',
+  yellow_red: '🟨🟥'
+}
+const CARD_SUFFIX: Record<string, string> = { goal_penalty: '(11m)', own_goal: '(ög)' }
+
+type CardEvent = { minute: string; type: string; player: string; team: 'h' | 'a' }
+
 function startOfDay(ts: number): number {
   const d = new Date(ts)
   d.setHours(0, 0, 0, 0)
   return d.getTime()
 }
 
-const MONTHS = ['jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.', 'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.']
+const MONTHS = [
+  'jan.',
+  'febr.',
+  'márc.',
+  'ápr.',
+  'máj.',
+  'jún.',
+  'júl.',
+  'aug.',
+  'szept.',
+  'okt.',
+  'nov.',
+  'dec.'
+]
 function kickoffLabel(f: Fixture): string {
   const d = new Date(f.date)
   if (!Number.isFinite(d.getTime())) return ''
@@ -61,7 +87,12 @@ export default function MeccsCenterPage() {
     }
   }, [state])
 
-  const empty = status === 'ready' && !buckets.live.length && !buckets.finished.length && !buckets.today.length && !buckets.upcoming.length
+  const empty =
+    status === 'ready' &&
+    !buckets.live.length &&
+    !buckets.finished.length &&
+    !buckets.today.length &&
+    !buckets.upcoming.length
 
   return (
     <>
@@ -121,7 +152,11 @@ export default function MeccsCenterPage() {
           </Section>
         )}
 
-        {empty && <div className="py-12 text-center text-[14px] text-[#0D3331]/50">Nincs megjeleníthető mérkőzés.</div>}
+        {empty && (
+          <div className="py-12 text-center text-[14px] text-[#0D3331]/50">
+            Nincs megjeleníthető mérkőzés.
+          </div>
+        )}
       </div>
     </>
   )
@@ -133,7 +168,9 @@ function Section({ children }: { children: React.ReactNode }) {
 
 function Header({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-[10px] flex items-center gap-[7px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">{children}</div>
+    <div className="mb-[10px] flex items-center gap-[7px] text-xs font-black tracking-[0.06em] text-[#0D3331]/55">
+      {children}
+    </div>
   )
 }
 
@@ -146,6 +183,10 @@ function UpcomingCard({ fixture }: { fixture: Fixture }) {
   const live = liveScoreFor(state, fixture.id)
   const odds = oddsFor(state, fixture.id)
   const cd = countdown(fixture)
+  const events = (state?.matchEvents?.[String(fixture.id)] ?? []).filter((e) =>
+    CARD_EVENT_TYPES.has(e.type)
+  ) as CardEvent[]
+  const htScore = state?.matchScores?.[String(fixture.id)]?.ht ?? null
 
   return (
     <div
@@ -170,15 +211,24 @@ function UpcomingCard({ fixture }: { fixture: Fixture }) {
           <span className="text-[18px]">{flag(away)}</span>
         </div>
       </div>
+      {events.length > 0 && <CompactEvents events={events} htScore={htScore} />}
       {odds ? (
         <div className="flex items-center justify-around border-t border-[#EBF6F5] bg-[#fbfdfd] px-3 py-[7px] text-[11px] font-bold text-[#0D3331]/60">
-          <span>1 <b className="tnum text-[#007E73]">{odds[0].toFixed(2)}</b></span>
-          <span>X <b className="tnum text-[#007E73]">{odds[1].toFixed(2)}</b></span>
-          <span>2 <b className="tnum text-[#007E73]">{odds[2].toFixed(2)}</b></span>
+          <span>
+            1 <b className="tnum text-[#007E73]">{odds[0].toFixed(2)}</b>
+          </span>
+          <span>
+            X <b className="tnum text-[#007E73]">{odds[1].toFixed(2)}</b>
+          </span>
+          <span>
+            2 <b className="tnum text-[#007E73]">{odds[2].toFixed(2)}</b>
+          </span>
         </div>
       ) : (
         cd && (
-          <div className="border-t border-[#EBF6F5] px-3 py-[6px] text-center text-[11px] font-bold text-[#007E73]">⏰ {cd}</div>
+          <div className="border-t border-[#EBF6F5] px-3 py-[6px] text-center text-[11px] font-bold text-[#007E73]">
+            ⏰ {cd}
+          </div>
         )
       )}
       {fixture.venue && (
@@ -186,6 +236,59 @@ function UpcomingCard({ fixture }: { fixture: Fixture }) {
           📍 {stadiumOf(fixture.venue)}
         </div>
       )}
+    </div>
+  )
+}
+
+function CompactEvents({
+  events,
+  htScore
+}: {
+  events: CardEvent[]
+  htScore: { h: number; a: number } | null
+}) {
+  const firstHalf = events.filter((e) => {
+    const min = parseInt(e.minute, 10)
+    return !Number.isNaN(min) && min <= 45
+  })
+  const secondHalf = events.filter((e) => {
+    const min = parseInt(e.minute, 10)
+    return Number.isNaN(min) || min > 45
+  })
+
+  const row = (e: CardEvent, i: number) => (
+    <div key={i} className="flex items-start text-[10px] font-bold leading-tight text-[#0D3331]/65">
+      {e.team === 'h' ? (
+        <span className="flex min-w-0 items-center gap-[3px]">
+          <span>{CARD_ICON[e.type]}</span>
+          <span className="tnum text-[#0D3331]/38">{e.minute}'</span>
+          <span className="truncate">{e.player}</span>
+          {CARD_SUFFIX[e.type] && <span className="text-[#0D3331]/35">{CARD_SUFFIX[e.type]}</span>}
+        </span>
+      ) : (
+        <span className="ml-auto flex min-w-0 items-center gap-[3px] text-right">
+          {CARD_SUFFIX[e.type] && <span className="text-[#0D3331]/35">{CARD_SUFFIX[e.type]}</span>}
+          <span className="truncate">{e.player}</span>
+          <span className="tnum text-[#0D3331]/38">{e.minute}'</span>
+          <span>{CARD_ICON[e.type]}</span>
+        </span>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="border-t border-[#EBF6F5] px-3 py-2">
+      {firstHalf.map(row)}
+      {firstHalf.length > 0 && secondHalf.length > 0 && (
+        <div className="flex items-center gap-1 py-[2px]">
+          <div className="h-px flex-1 bg-[#DCEFEE]" />
+          <span className="text-[9px] font-extrabold text-[#0D3331]/35">
+            {htScore ? `${htScore.h}–${htScore.a}` : 'FI'}
+          </span>
+          <div className="h-px flex-1 bg-[#DCEFEE]" />
+        </div>
+      )}
+      {secondHalf.map(row)}
     </div>
   )
 }

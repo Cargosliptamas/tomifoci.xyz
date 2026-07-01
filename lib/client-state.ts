@@ -15,7 +15,7 @@ import type {
   SwissPairing,
   SwissProfile,
   WizardPick,
-  WizardProfile,
+  WizardProfile
 } from './engine/types'
 
 type Row = Record<string, any>
@@ -34,20 +34,28 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
   const derived = computeDerivedRows(tables)
   const scoreRows = derived.playerScores.length ? derived.playerScores : tables.playerScores
   const rankingRows = derived.rankings.length ? derived.rankings : tables.rankings
-  const { enPlayers: _enPlayers, ls2Key: _ls2Key, ls2Secret: _ls2Secret, adminTotp: _adminTotp, ...settingsRest } =
-    settingsRow
+  const {
+    enPlayers: _enPlayers,
+    ls2Key: _ls2Key,
+    ls2Secret: _ls2Secret,
+    adminTotp: _adminTotp,
+    ...settingsRest
+  } = settingsRow
 
   const settings = {
     ...settingsRest,
-    players: isEnglish ? settingsRow.enPlayers ?? [] : settingsRow.players ?? [],
-    leagues: isEnglish ? ['Mindenki'] : settingsRow.leagues ?? ['Alapliga'],
+    players: isEnglish ? (settingsRow.enPlayers ?? []) : (settingsRow.players ?? []),
+    leagues: isEnglish ? ['Mindenki'] : (settingsRow.leagues ?? ['Alapliga']),
     landingSkin: settingsRow.landingSkin === 'classic' ? 'classic' : 'matchday',
     newsBoard: Array.isArray(settingsRow.newsBoard) ? settingsRow.newsBoard : [],
     hasLsKey: Boolean(settingsRow.ls2Key && settingsRow.ls2Secret)
   }
 
   // Extract per-match events and half-time scores from cached events_<matchId> rows.
-  const matchEvents: Record<string, Array<{ minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }>> = {}
+  const matchEvents: Record<
+    string,
+    Array<{ minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }>
+  > = {}
   const matchScores: Record<string, { ht?: { h: number; a: number } }> = {}
   for (const row of tables.apiCache ?? []) {
     if (typeof row.kind === 'string' && row.kind.startsWith('events_')) {
@@ -63,22 +71,57 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
 
   return {
     settings,
-    predictions: groupRows(tables.predictions, community, (row) => [row.player, row.matchId, { h: row.h, a: row.a }]),
-    results: mapRows(tables.results, (row) => [row.matchId, withDefined({ h: row.h, a: row.a, pen_h: row.pen_h, pen_a: row.pen_a })]),
+    predictions: groupRows(tables.predictions, community, (row) => [
+      row.player,
+      row.matchId,
+      { h: row.h, a: row.a }
+    ]),
+    results: mapRows(tables.results, (row) => [
+      row.matchId,
+      withDefined({ h: row.h, a: row.a, pen_h: row.pen_h, pen_a: row.pen_a })
+    ]),
     koTeams: mapRows(tables.koTeams, (row) => [
       row.matchId,
-      withDefined({ home: row.home, away: row.away, confirmed: row.confirmed, auto: row.auto, autoNote: row.autoNote })
+      withDefined({
+        home: row.home,
+        away: row.away,
+        confirmed: row.confirmed,
+        auto: row.auto,
+        autoNote: row.autoNote
+      })
     ]),
-    bonuses: groupListRows(tables.bonuses, community, (row) => [row.player, { pts: row.pts, reason: row.reason }]),
+    bonuses: groupListRows(tables.bonuses, community, (row) => [
+      row.player,
+      { pts: row.pts, reason: row.reason }
+    ]),
     favorites: mapCommunityRows(tables.favorites, community, (row) => [
       row.player,
-      { team: row.team, switched: row.switched, newTeam: row.newTeam ?? null, pendingKO: row.pendingKO ?? false }
+      {
+        team: row.team,
+        switched: row.switched,
+        newTeam: row.newTeam ?? null,
+        pendingKO: row.pendingKO ?? false
+      }
     ]),
-    _txnlog: mapRows(tables.txnlog, (row) => [row._id ?? `${row.ts}:${row.label}`, pick(row, ['ts', 'who', 'type', 'label', 'path'])]),
+    _txnlog: mapRows(tables.txnlog, (row) => [
+      row._id ?? `${row.ts}:${row.label}`,
+      pick(row, ['ts', 'who', 'type', 'label', 'path'])
+    ]),
     apiCache: mapRows(tables.apiCache, (row) => [row.kind, { ts: row.ts, data: row.data }]),
     scores: mapCommunityRows(scoreRows, community, (row) => [
       row.player,
-      pick(row, ['pts', 'matchPts', 'bonus', 'exact', 'counted', 'predicted', 'totalR', 'ppg', 'byScope', 'byMatch'])
+      pick(row, [
+        'pts',
+        'matchPts',
+        'bonus',
+        'exact',
+        'counted',
+        'predicted',
+        'totalR',
+        'ppg',
+        'byScope',
+        'byMatch'
+      ])
     ]),
     rankings: rankingsForCommunity(rankingRows, isEnglish),
     wizardPicks: groupRows(tables.wizardPicks, 'hu', (row) => [
@@ -86,12 +129,25 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
       row.matchId,
       { pick: row.pick, oddsAtPick: row.oddsAtPick }
     ]),
-    wizardProfiles: mapEncodedRows(tables.wizardProfiles, (row) => [row.player, { active: row.active, mirror: row.mirror }]),
+    wizardProfiles: mapEncodedRows(tables.wizardProfiles, (row) => [
+      row.player,
+      { active: row.active, mirror: row.mirror }
+    ]),
     wizardRankings: computeLiveWizardRankings(tables),
-    swissProfiles: isEnglish ? [] : (tables.swissProfiles ?? []).map((row) => pick(row, ['player', 'active', 'joinedRound', 'removedAtRound'])),
-    swissPairings: isEnglish ? [] : (tables.swissPairings ?? []).map((row) => pick(row, ['round', 'a', 'b', 'tier', 'slot', 'publishedBy'])),
+    swissProfiles: isEnglish
+      ? []
+      : (tables.swissProfiles ?? []).map((row) =>
+          pick(row, ['player', 'active', 'joinedRound', 'removedAtRound'])
+        ),
+    swissPairings: isEnglish
+      ? []
+      : (tables.swissPairings ?? []).map((row) =>
+          pick(row, ['round', 'a', 'b', 'tier', 'slot', 'publishedBy'])
+        ),
     swiss: isEnglish ? null : computeLiveSwiss(tables),
-    swissLog: isEnglish ? [] : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note'])),
+    swissLog: isEnglish
+      ? []
+      : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note'])),
     matchEvents,
     matchScores
   }
@@ -130,7 +186,10 @@ function toPlayerEntries(players: unknown): PlayerEntry[] {
   if (!Array.isArray(players)) return []
   return players
     .filter((p) => p && p.name)
-    .map((p) => ({ name: p.name as string, leagues: Array.isArray(p.leagues) ? (p.leagues as string[]) : [] }))
+    .map((p) => ({
+      name: p.name as string,
+      leagues: Array.isArray(p.leagues) ? (p.leagues as string[]) : []
+    }))
 }
 
 function mapPredictions(tables: Tables): Prediction[] {
@@ -146,7 +205,12 @@ function mapPredictions(tables: Tables): Prediction[] {
 function mapBonuses(tables: Tables): Bonus[] {
   return (tables.bonuses ?? [])
     .filter((row) => row.player)
-    .map((row) => ({ player: row.player, pts: Number(row.pts ?? 0), reason: row.reason ?? '', community: communityOf(row) }))
+    .map((row) => ({
+      player: row.player,
+      pts: Number(row.pts ?? 0),
+      reason: row.reason ?? '',
+      community: communityOf(row)
+    }))
 }
 
 function mapFavorites(tables: Tables): Favorite[] {
@@ -165,7 +229,13 @@ function mapFavorites(tables: Tables): Favorite[] {
 function mapKoTeams(tables: Tables): KoTeam[] {
   return (tables.koTeams ?? [])
     .filter((row) => Number.isInteger(Number(row.matchId)))
-    .map((row) => ({ matchId: Number(row.matchId), home: row.home ?? '', away: row.away ?? '', confirmed: row.confirmed, auto: row.auto }))
+    .map((row) => ({
+      matchId: Number(row.matchId),
+      home: row.home ?? '',
+      away: row.away ?? '',
+      confirmed: row.confirmed,
+      auto: row.auto
+    }))
 }
 
 // ── Live Wizard of ODDS ranking (engine-backed) ─────────────────────────────
@@ -199,7 +269,7 @@ function computeLiveWizardRankings(tables: Tables) {
       pick: row.pick as Pick1X2,
       oddsAtPick: Number(row.oddsAtPick ?? 0) || 0,
       oddsSource: row.oddsSource,
-      lockedAt: row.lockedAt,
+      lockedAt: row.lockedAt
     })
     storedKey.add(`${row.player}|${matchId}`)
   }
@@ -217,7 +287,9 @@ function computeLiveWizardRankings(tables: Tables) {
     const name = player.name
     if (!name) continue
     const prof = profileByPlayer.get(name)
-    const active = prof ? prof.active : true
+    // Classic parity: missing wizardProfiles row means "not joined"; mirror only
+    // defaults to on after the player joins the league.
+    const active = prof ? prof.active : false
     const mirror = prof ? prof.mirror : true
     if (!active || !mirror) continue
     const preds = predsByPlayer.get(name)
@@ -240,9 +312,12 @@ function computeLiveWizardRankings(tables: Tables) {
     else if (row.kind === 'odds' && row.data) oddsCache = toOddsSnapshot(row.data)
   }
 
-  const profiles: WizardProfile[] = (tables.wizardProfiles ?? [])
-    .filter((row) => row.player)
-    .map((row) => ({ player: row.player, active: row.active !== false, mirror: row.mirror !== false }))
+  const profiles: WizardProfile[] = players
+    .filter((row) => row.name)
+    .map((row) => {
+      const prof = profileByPlayer.get(row.name)
+      return { player: row.name, active: prof ? prof.active : false, mirror: prof ? prof.mirror : true }
+    })
 
   const repaired = repairOdds([...stored, ...mirrored], results, kickoffSnapshot, oddsCache)
   const scores = computeWizardScores(repaired, results, profiles)
@@ -253,7 +328,7 @@ function computeLiveWizardRankings(tables: Tables) {
     place: i + 1,
     pts: r.pts,
     accuracy: r.accuracy,
-    played: r.played,
+    played: r.played
   }))
 }
 
@@ -268,7 +343,7 @@ function computeLiveSwiss(tables: Tables) {
       player: row.player,
       active: row.active !== false,
       joinedRound: row.joinedRound,
-      removedAtRound: row.removedAtRound ?? null,
+      removedAtRound: row.removedAtRound ?? null
     }))
 
   const pairings: SwissPairing[] = (tables.swissPairings ?? [])
@@ -278,12 +353,18 @@ function computeLiveSwiss(tables: Tables) {
       a: row.a,
       b: row.b ?? null,
       tier: row.tier ?? undefined,
-      slot: row.slot ?? undefined,
+      slot: row.slot ?? undefined
     }))
 
   const predictions: Prediction[] = (tables.predictions ?? [])
     .filter((row) => (row.community ?? 'hu') === 'hu')
-    .map((row) => ({ player: row.player, matchId: Number(row.matchId), h: Number(row.h), a: Number(row.a), community: 'hu' }))
+    .map((row) => ({
+      player: row.player,
+      matchId: Number(row.matchId),
+      h: Number(row.h),
+      a: Number(row.a),
+      community: 'hu'
+    }))
 
   const results = mapResults(tables)
   const out = computeSwiss(profiles, pairings, predictions, results)
@@ -296,7 +377,7 @@ function computeLiveSwiss(tables: Tables) {
     l: s.l,
     place: s.place,
     predPts: s.base,
-    buchholz: s.bh,
+    buchholz: s.bh
   }))
 
   // Current round = first round with an unfinished match, else 13.
@@ -309,7 +390,8 @@ function computeLiveSwiss(tables: Tables) {
     }
   }
   // Standings freeze once round 10 (SWISS_ROUNDS index 9) is fully resulted.
-  const frozen = (SWISS_ROUNDS[9] ?? []).length > 0 && (SWISS_ROUNDS[9] ?? []).every((id) => resultIds.has(id))
+  const frozen =
+    (SWISS_ROUNDS[9] ?? []).length > 0 && (SWISS_ROUNDS[9] ?? []).every((id) => resultIds.has(id))
 
   return { standings, round, frozen }
 }
@@ -352,7 +434,11 @@ function communityOf(row: Row) {
   return row.community ?? 'hu'
 }
 
-function groupRows(rows: Row[] | undefined, community: string, select: (row: Row) => [string, string | number, unknown]) {
+function groupRows(
+  rows: Row[] | undefined,
+  community: string,
+  select: (row: Row) => [string, string | number, unknown]
+) {
   const out: Record<string, Record<string, unknown>> = {}
   for (const row of rows ?? []) {
     if (communityOf(row) !== community) continue
@@ -381,8 +467,15 @@ function mapRows(rows: Row[] | undefined, select: (row: Row) => [string | number
   return out
 }
 
-function mapCommunityRows(rows: Row[] | undefined, community: string, select: (row: Row) => [string | number, unknown]) {
-  return mapEncodedRows((rows ?? []).filter((row) => communityOf(row) === community), select)
+function mapCommunityRows(
+  rows: Row[] | undefined,
+  community: string,
+  select: (row: Row) => [string | number, unknown]
+) {
+  return mapEncodedRows(
+    (rows ?? []).filter((row) => communityOf(row) === community),
+    select
+  )
 }
 
 function mapEncodedRows(rows: Row[] | undefined, select: (row: Row) => [string | number, unknown]) {

@@ -6,13 +6,16 @@ import { useGame } from '@/components/game-provider'
 import { WizBoard } from '@/components/standings-ui'
 import { MATCHES, flag } from '@/lib/fixtures'
 import { statusOf, oddsFor, myWizard, myPrediction, teamsOf } from '@/lib/derive'
+import { encodeClientKey } from '@/lib/keys'
 
 type Pick = '1' | 'X' | '2'
 
 export default function WizardPage() {
-  const { state, session, status } = useGame()
+  const { state, session, status, refresh } = useGame()
   const me = session?.player ?? ''
   const [tab, setTab] = useState<'play' | 'table'>('play')
+  const profile = me ? state?.wizardProfiles?.[encodeClientKey(me)] : undefined
+  const active = profile?.active === true
 
   return (
     <>
@@ -24,7 +27,11 @@ export default function WizardPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`tap flex-1 rounded-[10px] px-1 py-[10px] text-[12px] font-extrabold ${tab === t ? '' : 'text-[#0D3331]/60'}`}
-              style={tab === t ? { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' } : undefined}
+              style={
+                tab === t
+                  ? { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }
+                  : undefined
+              }
             >
               {t === 'play' ? '🪄 Tippek' : '🏆 Rangsor'}
             </button>
@@ -37,16 +44,75 @@ export default function WizardPage() {
           ) : (
             <WizBoard rows={state?.wizardRankings ?? []} me={me} />
           )
+        ) : status === 'loading' ? (
+          <div className="py-12 text-center text-[14px] text-[#0D3331]/40">Betöltés…</div>
+        ) : !active ? (
+          <WizardJoin session={session} refresh={refresh} />
         ) : (
           <WizardPlay />
         )}
 
         <p className="mt-4 px-1 text-[11px] leading-[1.5] text-[#0D3331]/50">
-          A Wizard-tipp alapból az eredmény-tippedből tükröződik (Varázslótanonc). Itt felülírhatod
-          bármelyik meccsre. A helyes 1/X/2 a leadáskori oddst éri, az [1,10–10,00] sávra vágva.
+          A Wizard-tipp alapból az eredmény-tippedből tükröződik (Varázslótanonc). Itt felülírhatod bármelyik
+          meccsre. A helyes 1/X/2 a leadáskori oddst éri, az [1,10–10,00] sávra vágva.
         </p>
       </div>
     </>
+  )
+}
+
+function WizardJoin({
+  session,
+  refresh
+}: {
+  session: { player: string; pin: string; community: 'hu' | 'en' } | null
+  refresh: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function join() {
+    if (!session || busy) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/wizard-profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          player: session.player,
+          pin: session.pin,
+          community: session.community,
+          active: true,
+          mirror: true
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Mentés sikertelen')
+      await refresh()
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Mentés sikertelen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-[16px] bg-white p-4 text-center surface-card">
+      <div className="text-[15px] font-black text-[#0D3331]">Még nem vagy bent a Smaragdváros Ligában</div>
+      <p className="mx-auto mt-2 max-w-[360px] text-[12px] leading-[1.55] text-[#0D3331]/58">
+        Belépés után a Varázslótanonc mód automatikusan 1/X/2 Wizard picket készít az eredmény-tippjeidből.
+      </p>
+      {err && <div className="mt-2 text-[12px] font-bold text-[#FF3B30]">{err}</div>}
+      <button
+        type="button"
+        disabled={!session || busy || session.community !== 'hu'}
+        onClick={() => void join()}
+        className="mt-4 rounded-[13px] bg-[#00B8A9] px-5 py-3 text-[13px] font-extrabold text-white disabled:opacity-45"
+      >
+        {busy ? 'Belépés…' : 'Belépek a Ligába'}
+      </button>
+    </div>
   )
 }
 
@@ -58,10 +124,16 @@ function mirrorPick(pred: { h: number; a: number } | null): Pick | null {
 function WizardPlay() {
   const { state } = useGame()
   const open = useMemo(
-    () => MATCHES.filter((f) => statusOf(state, f) === 'open').sort((a, b) => Date.parse(a.date) - Date.parse(b.date)).slice(0, 30),
+    () =>
+      MATCHES.filter((f) => statusOf(state, f) === 'open')
+        .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+        .slice(0, 30),
     [state]
   )
-  if (!open.length) return <div className="py-10 text-center text-[13px] text-[#0D3331]/45">Nincs jelenleg tippelhető meccs.</div>
+  if (!open.length)
+    return (
+      <div className="py-10 text-center text-[13px] text-[#0D3331]/45">Nincs jelenleg tippelhető meccs.</div>
+    )
   return (
     <div className="space-y-2.5">
       {open.map((f) => (

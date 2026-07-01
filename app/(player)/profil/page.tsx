@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/page-header'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
 import { clearSession, readSession, writeSession, type Session } from '@/lib/session'
+import { bioHas, bioRegister, bioSupported, storeBioPin } from '@/lib/local-webauthn'
 import { flag, GROUPS } from '@/lib/fixtures'
 import { useEffect, useState } from 'react'
 
@@ -20,9 +21,18 @@ export default function ProfilPage() {
   const fav = me ? state?.favorites?.[encodeClientKey(me)] : undefined
   const favTeam = fav?.switched ? fav.newTeam || fav.team : fav?.team
 
-  const tipRank = placeIn((state?.rankings?.[encodeClientKey('all_Mindenki')] ?? []).map((r) => r.name), me)
-  const wizRank = placeIn((state?.wizardRankings ?? []).map((r) => r.name), me)
-  const swissRank = placeIn((state?.swiss?.standings ?? []).map((r) => r.name), me)
+  const tipRank = placeIn(
+    (state?.rankings?.[encodeClientKey('all_Mindenki')] ?? []).map((r) => r.name),
+    me
+  )
+  const wizRank = placeIn(
+    (state?.wizardRankings ?? []).map((r) => r.name),
+    me
+  )
+  const swissRank = placeIn(
+    (state?.swiss?.standings ?? []).map((r) => r.name),
+    me
+  )
 
   function logout() {
     clearSession()
@@ -49,8 +59,12 @@ export default function ProfilPage() {
             <RankTile label="🪄 WIZ" value={wizRank} />
             <RankTile label="♟ SVÁJCI" value={swissRank} />
           </div>
-          <div className="mt-[14px] border-t border-white/[0.14] pt-3 text-xs font-semibold" style={{ color: '#cfeae8' }}>
-            {Math.round(score?.pts ?? 0)} pont · {(score?.ppg ?? 0).toFixed(1)} PPG · {score?.exact ?? 0} telitalálat
+          <div
+            className="mt-[14px] border-t border-white/[0.14] pt-3 text-xs font-semibold"
+            style={{ color: '#cfeae8' }}
+          >
+            {Math.round(score?.pts ?? 0)} pont · {(score?.ppg ?? 0).toFixed(1)} PPG · {score?.exact ?? 0}{' '}
+            telitalálat
           </div>
         </div>
 
@@ -58,6 +72,9 @@ export default function ProfilPage() {
 
         <div className="overflow-hidden rounded-[16px] bg-white surface-card">
           <NotificationsRow />
+          <BiometricRow session={session} />
+          <WizardProfileRow />
+          <SwissProfileRow />
           <PinRow player={me} community={session?.community ?? 'hu'} />
           <LanguageRow session={session} />
           <CacheRow />
@@ -83,7 +100,13 @@ function favPhaseNow(): 'free' | 'once' | 'locked' {
   return 'locked'
 }
 
-function FavoritePicker({ current, onPick }: { current: string | null; onPick: (team: string) => Promise<{ ok: boolean; error?: string }> }) {
+function FavoritePicker({
+  current,
+  onPick
+}: {
+  current: string | null
+  onPick: (team: string) => Promise<{ ok: boolean; error?: string }>
+}) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -118,7 +141,9 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-extrabold">⭐ Kedvenc csapat</span>
         {locked ? (
-          <span className="rounded-full bg-[#EBF0F0] px-2.5 py-1 text-[11px] font-bold text-[#0D3331]/55">🔒 zárolva</span>
+          <span className="rounded-full bg-[#EBF0F0] px-2.5 py-1 text-[11px] font-bold text-[#0D3331]/55">
+            🔒 zárolva
+          </span>
         ) : (
           <button onClick={() => setOpen((v) => !v)} className="text-[12px] font-extrabold text-[#007E73]">
             {current ? `${current} ${flag(current)}` : 'Válassz'} {open ? '▲' : '▾'}
@@ -141,7 +166,9 @@ function FavoritePicker({ current, onPick }: { current: string | null; onPick: (
               disabled={busy}
               onClick={() => pick(team)}
               className={`tap flex items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left text-[13px] font-bold ${
-                team === current ? 'border-[#14a08c] bg-[rgba(20,160,140,0.1)]' : 'border-[#DCEFEE] bg-white hover:border-[#bfe4df]'
+                team === current
+                  ? 'border-[#14a08c] bg-[rgba(20,160,140,0.1)]'
+                  : 'border-[#DCEFEE] bg-white hover:border-[#bfe4df]'
               }`}
             >
               <span>{flag(team)}</span>
@@ -258,6 +285,7 @@ function PinRow({ player, community }: { player: string; community: 'hu' | 'en' 
         // Keep the locally-stored PIN in sync so future writes authenticate.
         const s = readSession()
         if (s) writeSession({ ...s, pin: newPin })
+        if (bioHas('player', player, community)) storeBioPin('player', player, community, newPin)
         setMsg({ ok: true, text: 'PIN frissítve ✓' })
         setOldPin('')
         setNewPin('')
@@ -306,7 +334,9 @@ function PinRow({ player, community }: { player: string; community: 'hu' | 'en' 
             onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
           />
           {msg && (
-            <div className={`text-[12px] font-bold ${msg.ok ? 'text-[#007E73]' : 'text-[#FF3B30]'}`}>{msg.text}</div>
+            <div className={`text-[12px] font-bold ${msg.ok ? 'text-[#007E73]' : 'text-[#FF3B30]'}`}>
+              {msg.text}
+            </div>
           )}
           <button
             type="button"
@@ -387,6 +417,183 @@ function NotificationsRow() {
       onClick={toggle}
       accessory={<Toggle on={on} />}
     />
+  )
+}
+
+function BiometricRow({ session }: { session: Session | null }) {
+  const [supported, setSupported] = useState(false)
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!session) return
+    const ok = bioSupported()
+    setSupported(ok)
+    setEnabled(ok && bioHas('player', session.player, session.community))
+  }, [session])
+
+  async function setup() {
+    if (!session || busy) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      await bioRegister('player', session.player, session.player, session.community)
+      storeBioPin('player', session.player, session.community, session.pin)
+      setEnabled(true)
+      setMsg('Face ID / Touch ID beállítva ✓')
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : 'Biometria hiba')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsRow
+      icon="🪪"
+      label="Face ID / Touch ID"
+      value={!supported ? 'Nem támogatott' : enabled ? 'Beállítva' : 'Nincs beállítva'}
+      onClick={supported ? () => void setup() : undefined}
+      accessory={
+        supported ? (
+          <span className="rounded-full bg-[#EBF0F0] px-2.5 py-1 text-[11px] font-extrabold text-[#007E73]">
+            {busy ? '…' : enabled ? 'Újra' : 'Beállítás'}
+          </span>
+        ) : undefined
+      }
+    >
+      {msg && (
+        <div className={`px-4 pb-3 text-[12px] font-bold ${enabled ? 'text-[#007E73]' : 'text-[#FF3B30]'}`}>
+          {msg}
+        </div>
+      )}
+    </SettingsRow>
+  )
+}
+
+function WizardProfileRow() {
+  const { state, session, refresh } = useGame()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const me = session?.player ?? ''
+  const community = session?.community ?? 'hu'
+  const profile = me ? state?.wizardProfiles?.[encodeClientKey(me)] : undefined
+  const active = profile?.active === true
+  const mirror = profile?.mirror !== false
+
+  async function save(next: { active: boolean; mirror: boolean }) {
+    if (!session || busy || community !== 'hu') return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/wizard-profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ player: session.player, pin: session.pin, community, ...next })
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Mentés sikertelen')
+      await refresh()
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : 'Mentés sikertelen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsRow
+      icon="🪄"
+      label="Wizard Liga"
+      value={community !== 'hu' ? 'HU játék' : active ? 'Részt veszek' : 'Nem játszom'}
+      onClick={
+        community === 'hu' ? () => void save({ active: !active, mirror: active ? mirror : true }) : undefined
+      }
+      accessory={community === 'hu' ? <Toggle on={active} /> : undefined}
+    >
+      {community === 'hu' && (
+        <div className="space-y-2 px-4 pb-4">
+          <button
+            type="button"
+            disabled={!active || busy}
+            onClick={() => void save({ active: true, mirror: !mirror })}
+            className="flex w-full items-start gap-3 rounded-[12px] border border-[#DCEFEE] px-3 py-2.5 text-left disabled:opacity-45"
+          >
+            <Toggle on={active && mirror} />
+            <span className="text-[12px] leading-[1.45] text-[#0D3331]/65">
+              <b className="text-[#0D3331]">Varázslótanonc mód</b>
+              <br />
+              Az eredmény-tippedből automatikusan lesz 1/X/2 Wizard pick.
+            </span>
+          </button>
+          {msg && <div className="text-[12px] font-bold text-[#FF3B30]">{msg}</div>}
+        </div>
+      )}
+    </SettingsRow>
+  )
+}
+
+function SwissProfileRow() {
+  const { state, session, refresh } = useGame()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const me = session?.player ?? ''
+  const community = session?.community ?? 'hu'
+  const profile = (state?.swissProfiles ?? []).find((p) => p.player === me)
+  const active = profile?.active === true
+  const removed = profile?.removedAtRound != null
+  const row = (state?.swiss?.standings ?? []).find((r) => r.name === me)
+
+  async function save(nextActive: boolean) {
+    if (!session || busy || community !== 'hu') return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/swiss-profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ player: session.player, pin: session.pin, community, active: nextActive })
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Mentés sikertelen')
+      await refresh()
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : 'Mentés sikertelen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsRow
+      icon="♟"
+      label="Párbaj"
+      value={
+        community !== 'hu'
+          ? 'HU játék'
+          : removed
+            ? 'Admin eltávolította'
+            : active
+              ? 'Részt veszek'
+              : 'Nem játszom'
+      }
+      onClick={community === 'hu' && !removed ? () => void save(!active) : undefined}
+      accessory={community === 'hu' ? <Toggle on={active} /> : undefined}
+    >
+      {community === 'hu' && (row || removed || msg) && (
+        <div className="space-y-1 px-4 pb-4 text-[12px] font-semibold text-[#0D3331]/58">
+          {row && (
+            <div>
+              Állásod: <b>{row.place}. hely</b> · {row.mp ?? 0} meccspont ({row.w ?? 0}-{row.d ?? 0}-
+              {row.l ?? 0})
+            </div>
+          )}
+          {removed && <div className="text-[#FF3B30]">Kikerültél a ligából — az admin tud visszavenni.</div>}
+          {msg && <div className="font-bold text-[#FF3B30]">{msg}</div>}
+        </div>
+      )}
+    </SettingsRow>
   )
 }
 

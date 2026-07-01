@@ -3,15 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useGame } from '@/components/game-provider'
 import { flag, type Fixture } from '@/lib/fixtures'
-import {
-  countdown,
-  isFavoriteMatch,
-  myPrediction,
-  myWizard,
-  oddsFor,
-  statusOf,
-  teamsOf
-} from '@/lib/derive'
+import { countdown, isFavoriteMatch, myPrediction, myWizard, oddsFor, statusOf, teamsOf } from '@/lib/derive'
+import { encodeClientKey } from '@/lib/keys'
 
 export function MatchCard({ fixture }: { fixture: Fixture }) {
   const { state, session, savePrediction } = useGame()
@@ -25,6 +18,7 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
 
   const savedPred = me ? myPrediction(state, me, fixture.id) : null
   const savedWiz = me ? myWizard(state, me, fixture.id) : null
+  const wizardActive = me ? state?.wizardProfiles?.[encodeClientKey(me)]?.active === true : false
   const odds = oddsFor(state, fixture.id)
 
   const [h, setH] = useState(savedPred?.h ?? 0)
@@ -73,10 +67,20 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
 
   return (
     <div className="mb-3 overflow-hidden rounded-[18px] bg-white surface-card">
-      <button onClick={() => setExpanded((v) => !v)} className="tap flex w-full items-center gap-[10px] px-4 py-[14px] text-left hover:bg-[#F7FBFA]">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="tap flex w-full items-center gap-[10px] px-4 py-[14px] text-left hover:bg-[#F7FBFA]"
+      >
         <span
           className="w-[54px] flex-none text-[11px] font-extrabold"
-          style={{ color: status === 'open' && countdown(fixture).includes('perc!') ? '#FF9500' : locked ? 'rgba(13,51,49,0.4)' : '#007E73' }}
+          style={{
+            color:
+              status === 'open' && countdown(fixture).includes('perc!')
+                ? '#FF9500'
+                : locked
+                  ? 'rgba(13,51,49,0.4)'
+                  : '#007E73'
+          }}
         >
           {locked ? '🔒' : countdown(fixture)}
         </span>
@@ -88,12 +92,17 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
           <span>{flag(away)}</span>
         </span>
         {fav && (
-          <span className="rounded-full bg-[#fff3d6] px-[7px] py-[3px] text-[10px] font-black text-[#9a6b00]">⭐×2</span>
+          <span className="rounded-full bg-[#fff3d6] px-[7px] py-[3px] text-[10px] font-black text-[#9a6b00]">
+            ⭐×2
+          </span>
         )}
         <span className="rounded-full px-[9px] py-1 text-[11px] font-extrabold" style={statusChip.style}>
           {statusChip.label}
         </span>
-        <span className="text-[18px] text-[#0D3331]/30" style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}>
+        <span
+          className="text-[18px] text-[#0D3331]/30"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+        >
           ⌄
         </span>
       </button>
@@ -142,20 +151,30 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
                 </span>
               )}
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {(['1', 'X', '2'] as const).map((p, i) => (
-                <div
-                  key={p}
-                  className={`rounded-[12px] px-1 py-[9px] text-center ${savedWiz?.pick === p ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331]'}`}
-                >
-                  <div className="text-[11px] font-black">{p}</div>
-                  <div className="tnum mt-px text-[15px] font-black">{odds ? odds[i].toFixed(2) : '—'}</div>
+            {wizardActive ? (
+              <>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(['1', 'X', '2'] as const).map((p, i) => (
+                    <div
+                      key={p}
+                      className={`rounded-[12px] px-1 py-[9px] text-center ${savedWiz?.pick === p ? 'broadcast-info' : 'border border-[#DCEFEE] bg-white text-[#0D3331]'}`}
+                    >
+                      <div className="text-[11px] font-black">{p}</div>
+                      <div className="tnum mt-px text-[15px] font-black">
+                        {odds ? odds[i].toFixed(2) : '—'}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="mt-[9px] text-[11px] font-semibold text-[#0D3331]/55">
-              A Wizard-tipp alapból a tippedből tükröződik. Felülírni a 🪄 Wizard fülön tudod.
-            </div>
+                <div className="mt-[9px] text-[11px] font-semibold text-[#0D3331]/55">
+                  A Wizard-tipp alapból a tippedből tükröződik. Felülírni a 🪄 Wizard fülön tudod.
+                </div>
+              </>
+            ) : (
+              <div className="mt-2 rounded-[10px] bg-[#F4F7F7] px-3 py-2 text-[11px] font-semibold text-[#0D3331]/55">
+                A Wizard Liga a Profilban kapcsolható be.
+              </div>
+            )}
           </div>
 
           {/* ♟ SVÁJCI */}
@@ -177,10 +196,20 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
                 ? { background: '#EBF0F0', color: 'rgba(13,51,49,0.5)' }
                 : savedMsg && !dirty
                   ? { background: '#e9f6ee', color: '#15803d' }
-                  : { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37', boxShadow: '0 6px 16px rgba(0,184,169,0.28)' }
+                  : {
+                      background: 'linear-gradient(160deg,#00C9BA,#00A99B)',
+                      color: '#063b37',
+                      boxShadow: '0 6px 16px rgba(0,184,169,0.28)'
+                    }
             }
           >
-            {locked ? '🔒 Lezárva a sípszókor' : saving ? 'Mentés…' : savedMsg && !dirty ? '✓ Eredmény-tipp mentve' : 'Mentés — eredmény-tipp'}
+            {locked
+              ? '🔒 Lezárva a sípszókor'
+              : saving
+                ? 'Mentés…'
+                : savedMsg && !dirty
+                  ? '✓ Eredmény-tipp mentve'
+                  : 'Mentés — eredmény-tipp'}
           </button>
         </div>
       )}
@@ -188,7 +217,15 @@ export function MatchCard({ fixture }: { fixture: Fixture }) {
   )
 }
 
-function Stepper({ value, onStep, disabled }: { value: number; onStep: (d: number) => void; disabled: boolean }) {
+function Stepper({
+  value,
+  onStep,
+  disabled
+}: {
+  value: number
+  onStep: (d: number) => void
+  disabled: boolean
+}) {
   const btn = disabled
     ? 'h-[26px] w-[44px] rounded-[9px] border border-[#EBF0F0] bg-[#F4F7F7] text-[16px] font-extrabold text-[#0D3331]/30'
     : 'tap h-[26px] w-[44px] rounded-[9px] border border-[#DCEFEE] bg-white text-[16px] font-extrabold text-[#007E73] hover:bg-[#F7FBFA]'
@@ -209,8 +246,10 @@ function Stepper({ value, onStep, disabled }: { value: number; onStep: (d: numbe
 
 function chipFor(status: string, hasPred: boolean, hasWiz: boolean) {
   if (status === 'locked' || status === 'live' || status === 'finished') {
-    if (status === 'live') return { label: '🔴 élő', style: { color: '#fff', background: '#FF3B30' } as const }
-    if (status === 'finished') return { label: '✓ vége', style: { color: '#15803d', background: '#e9f6ee' } as const }
+    if (status === 'live')
+      return { label: '🔴 élő', style: { color: '#fff', background: '#FF3B30' } as const }
+    if (status === 'finished')
+      return { label: '✓ vége', style: { color: '#15803d', background: '#e9f6ee' } as const }
     return { label: '🔒 lezárva', style: { color: 'rgba(13,51,49,0.55)', background: '#EBF0F0' } as const }
   }
   if (hasPred || hasWiz) {
