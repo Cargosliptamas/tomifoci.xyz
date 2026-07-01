@@ -1,0 +1,12 @@
+# Reject macOS/iCloud-style conflict duplicates ("file 2.ts") before they can repeat
+# tonight's outage: lib/livescore 2.ts silently broke every build for 2+ hours.
+dupes=$(git diff --cached --name-only --diff-filter=ACM | grep -E ' [0-9]+\.[^./]+$' || true)
+if [ -n "$dupes" ]; then
+  echo "✗ Refusing to commit likely duplicate file(s):"
+  echo "$dupes" | sed 's/^/  /'
+  echo "  (looks like a macOS/iCloud sync conflict copy, not a real source file)"
+  exit 1
+fi
+
+npx lint-staged
+pnpm run typecheck
