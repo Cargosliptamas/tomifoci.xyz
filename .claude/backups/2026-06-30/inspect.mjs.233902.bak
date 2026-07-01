@@ -1,0 +1,14 @@
+import { neon } from '@neondatabase/serverless'
+const sql = neon(process.env.DATABASE_URL)
+
+const player = 'Front Man'
+
+const preds = await sql`SELECT id, player, match_id, h, a, community FROM predictions WHERE player = ${player} ORDER BY match_id`
+console.log('=== predictions rows for', player, '===')
+console.log(JSON.stringify(preds, null, 2))
+
+const txn = await sql`SELECT value FROM key_value WHERE key = 'txnlog'`.catch(async () => {
+  // table name might differ; try the kv table generically
+  return null
+})
+console.log('=== txn (generic attempt) ===', txn)
