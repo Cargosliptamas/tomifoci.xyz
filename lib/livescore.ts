@@ -166,6 +166,43 @@ function parseScore(s: unknown): { h: number; a: number } | null {
   return m ? { h: Number(m[1]), a: Number(m[2]) } : null
 }
 
+function dateParam(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function recentHistoryParams(now = new Date()): { from: string; to: string } {
+  const from = new Date(now)
+  from.setUTCDate(from.getUTCDate() - 8)
+  const to = new Date(now)
+  to.setUTCDate(to.getUTCDate() + 1)
+  return { from: dateParam(from), to: dateParam(to) }
+}
+
+export function matchResultScore(m: any): { h: number; a: number } | null {
+  return (
+    parseScore(m?.ft_score) ||
+    parseScore(m?.scores?.ft_score) ||
+    parseScore(m?.scores?.ft) ||
+    parseScore(m?.scores?.full_time) ||
+    parseScore(m?.scores?.fulltime) ||
+    parseScore(m?.score) ||
+    parseScore(m?.scores?.score)
+  )
+}
+
+function matchPenaltyScore(m: any): { h: number; a: number } | null {
+  return parseScore(
+    m?.pen_score || m?.penalty_score || m?.penalties || m?.scores?.pen_score || m?.scores?.penalty_score
+  )
+}
+
+export function isFinalLiveStatus(status: unknown): boolean {
+  const value = String(status ?? '')
+    .trim()
+    .toUpperCase()
+  return value === 'FT' || value === 'FINISHED' || value === 'FULL TIME' || value === 'FULLTIME'
+}
+
 function loadDataFixtures(): Array<{ id: number; home: string; away: string; stage: string }> {
   for (const p of [join(process.cwd(), 'public', 'classic', 'data.js'), join(process.cwd(), 'data.js')]) {
     try {
@@ -280,25 +317,28 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       }
     }
 
+    const historyParams = recentHistoryParams()
     for (const comp of COMPS) {
       let data
       try {
-        data = await ls(key, secret, '/matches/history.json', { competition_id: String(comp) })
+        data = await ls(key, secret, '/matches/history.json', {
+          competition_id: String(comp),
+          ...historyParams
+        })
       } catch {
         continue
       }
-      for (const m of data?.match ?? data ?? []) {
+      for (const m of listOf(data)) {
         const ref = findId(
           huTeamName(m.home, m.home_translations?.hu || m.home_name),
           huTeamName(m.away, m.away_translations?.hu || m.away_name)
         )
         if (!ref) continue
-        const sc = parseScore(m.ft_score || m.score)
+        const sc = matchResultScore(m)
         if (!sc) continue
         const oriented = ref.reversed ? { h: sc.a, a: sc.h } : { h: sc.h, a: sc.a }
         // Best-effort penalty score extraction (field name varies by livescore API version)
-        const penRaw = m.pen_score || m.penalty_score || m.penalties || ''
-        const penSc = parseScore(penRaw)
+        const penSc = matchPenaltyScore(m)
         const penOriented = penSc
           ? ref.reversed
             ? { penH: penSc.a, penA: penSc.h }
@@ -333,14 +373,18 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       for (const m of data?.match ?? data ?? []) {
         const ref = findId(huTeamName(m.home, m.home_name), huTeamName(m.away, m.away_name))
         if (!ref) continue
-        const sc = parseScore(m.scores?.score ?? m.score ?? m.ft_score)
+        const sc = matchResultScore(m)
         if (!sc) continue
         const oriented = ref.reversed ? { h: sc.a, a: sc.h } : { h: sc.h, a: sc.a }
+        const status = String(m.status ?? '')
         live[ref.id] = {
           h: oriented.h,
           a: oriented.a,
           elapsed: String(m.time ?? m.elapsed ?? ''),
-          status: String(m.status ?? '')
+          status
+        }
+        if (isFinalLiveStatus(status)) {
+          results[ref.id] = { ...oriented }
         }
         const apiId = String(m.id || m.match_id || '')
         if (apiId) {
@@ -357,7 +401,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
             apiId,
             reversed: ref.reversed,
             htScore,
-            status: String(m.status ?? ''),
+            status,
             venue
           }
         }
