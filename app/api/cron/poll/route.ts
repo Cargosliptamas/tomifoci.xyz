@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { runLiveScorePoll } from '@/lib/livescore'
 import { sendResultPush } from '@/lib/result-notifications'
+import { authorized as adminAuthorized } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -16,7 +17,7 @@ function authorized(request: Request): boolean {
   // Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` when CRON_SECRET is set.
   if (cronSecret && request.headers.get('authorization') === `Bearer ${cronSecret}`) return true
   // Manual admin trigger.
-  if (adminToken && request.headers.get('x-admin-token') === adminToken) return true
+  if (adminToken && adminAuthorized(request)) return true
   // No CRON_SECRET configured → allow (the scheduled Vercel cron can't send one, and the
   // poll only writes recomputable cache + merge-upsert results). ADMIN_TOKEN alone must NOT
   // gate the cron, or the schedule 401s.
