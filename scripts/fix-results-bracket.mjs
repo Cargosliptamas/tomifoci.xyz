@@ -45,8 +45,8 @@ async function main() {
   // Match 89 (2026-07-04T19:00): Winner M73 (Kanada) vs Winner M74 (Brazília)
   // Match 90 (2026-07-04T23:00): Winner M75 (Paraguay) vs Winner M76 (Marokkó)
   const r16 = [
-    { id: '89', home: 'Kanada', away: 'Brazília', note: 'Winner M73 vs Winner M74' },
-    { id: '90', home: 'Paraguay', away: 'Marokkó', note: 'Winner M75 vs Winner M76' }
+    { id: '89', matchId: 89, home: 'Kanada', away: 'Brazília', note: 'Winner M73 vs Winner M74' },
+    { id: '90', matchId: 90, home: 'Paraguay', away: 'Marokkó', note: 'Winner M75 vs Winner M76' }
   ]
   console.log()
   for (const m of r16) {
@@ -56,7 +56,7 @@ async function main() {
     const prev = existing[0]?.payload ?? null
     await sql`
       INSERT INTO imported_rows (table_name, convex_id, payload)
-      VALUES ('koTeams', ${m.id}, ${JSON.stringify({ home: m.home, away: m.away, confirmed: true })}::jsonb)
+      VALUES ('koTeams', ${m.id}, ${JSON.stringify({ matchId: m.matchId, home: m.home, away: m.away, confirmed: true })}::jsonb)
       ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
     `
     const prevStr = prev ? `${prev.home} vs ${prev.away}` : 'empty'
