@@ -43,25 +43,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = as ? { player: as, pin: '0000', community: 'hu' } : readSession()
   }
   const community = sessionRef.current?.community ?? 'hu'
+  const player = sessionRef.current?.player ?? ''
 
-  const refresh = useCallback(async (fresh = false) => {
-    try {
-      const res = await fetch(`/api/state?community=${community}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
-      const json = await res.json()
-      if (!res.ok || !json.ok) {
-        setStatus('error')
-        setError(json.error ?? `HTTP ${res.status}`)
-        return
+  const refresh = useCallback(
+    async (fresh = false) => {
+      try {
+        const params = new URLSearchParams({ community })
+        if (player) params.set('player', player)
+        if (fresh) params.set('fresh', '1')
+        const res = await fetch(`/api/state?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json()
+        if (!res.ok || !json.ok) {
+          setStatus('error')
+          setError(json.error ?? `HTTP ${res.status}`)
+          return
+        }
+        setState(json.state as GameState)
+        setLastUpdated(Date.now())
+        setStatus('ready')
+        setError(null)
+      } catch {
+        setStatus('offline')
+        setError('offline')
       }
-      setState(json.state as GameState)
-      setLastUpdated(Date.now())
-      setStatus('ready')
-      setError(null)
-    } catch {
-      setStatus('offline')
-      setError('offline')
-    }
-  }, [community])
+    },
+    [community, player]
+  )
 
   useEffect(() => {
     void refresh()
@@ -75,7 +82,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ...payload, player: session.player, pin: session.pin, community: session.community })
+          body: JSON.stringify({
+            ...payload,
+            player: session.player,
+            pin: session.pin,
+            community: session.community
+          })
         })
         const json = await res.json().catch(() => ({}))
         if (!res.ok || !json.ok) return { ok: false, error: json.error ?? `HTTP ${res.status}` }

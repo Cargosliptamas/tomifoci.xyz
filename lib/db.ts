@@ -1,5 +1,8 @@
 import { neon } from '@neondatabase/serverless'
 import { buildPublicState } from './client-state'
+import { MATCH_BY_ID } from './fixtures'
+import { encodeClientKey } from './keys'
+import type { GameState } from './types'
 import { keyValueJsonTables } from '../db/schema'
 
 type Row = Record<string, any>
@@ -36,9 +39,64 @@ export async function upsertImportedRow(
   `
 }
 
-export async function loadPublicStateFromNeon(community: 'hu' | 'en' = 'hu') {
+export async function loadPublicStateFromNeon(
+  community: 'hu' | 'en' = 'hu',
+  options: { player?: string | null } = {}
+) {
   const tables = await loadStateTablesFromNeon()
-  return buildPublicState(tables, { community })
+  return buildPublicState(tables, { community, player: options.player })
+}
+
+export async function loadPlayerHistoryFromNeon(args: {
+  community?: 'hu' | 'en'
+  player: string
+  limit?: number
+  offset?: number
+}) {
+  const community = args.community ?? 'hu'
+  const limit = Math.min(30, Math.max(1, Math.floor(args.limit ?? 10)))
+  const offset = Math.max(0, Math.floor(args.offset ?? 0))
+  const state = buildPublicState(await loadStateTablesFromNeon(), {
+    community,
+    player: args.player
+  }) as unknown as GameState
+  const key = encodeClientKey(args.player)
+  const score = state.scores[key]
+  const preds = state.predictions[key] ?? {}
+  const wizPicks = state.wizardPicks[key] ?? {}
+  const byMatch = score?.byMatch ?? {}
+
+  const rows = Object.keys(preds)
+    .map(Number)
+    .filter((id) => state.results[String(id)] && MATCH_BY_ID[id])
+    .sort((a, b) => Date.parse(MATCH_BY_ID[b].date) - Date.parse(MATCH_BY_ID[a].date))
+    .map((id) => {
+      const fixture = MATCH_BY_ID[id]
+      const ko = state.koTeams[String(id)]
+      const home = fixture.stage === 'ko' && ko?.home ? ko.home : fixture.home
+      const away = fixture.stage === 'ko' && ko?.away ? ko.away : fixture.away
+      return {
+        id,
+        home,
+        away,
+        result: state.results[String(id)],
+        prediction: preds[String(id)],
+        wizardPick: wizPicks[String(id)]?.pick ?? null,
+        earned: byMatch[String(id)] ?? null
+      }
+    })
+
+  return {
+    player: args.player,
+    summary: {
+      pts: score?.pts ?? 0,
+      ppg: score?.ppg ?? 0,
+      exact: score?.exact ?? 0
+    },
+    rows: rows.slice(offset, offset + limit),
+    nextOffset: offset + limit < rows.length ? offset + limit : null,
+    total: rows.length
+  }
 }
 
 export async function verifyPlayerPinInNeon(player: string, pin: string, community: 'hu' | 'en' = 'hu') {
@@ -55,13 +113,19 @@ export async function verifyPlayerPinInNeon(player: string, pin: string, communi
 // True if this player already has a PIN hash in Neon.
 export async function playerHasPin(player: string, community: 'hu' | 'en' = 'hu'): Promise<boolean> {
   const rows = await getImportedRows('pinHashes')
-  return rows.some((entry) => entry.name === player && (entry.community ?? 'hu') === community && entry.salt && entry.hash)
+  return rows.some(
+    (entry) => entry.name === player && (entry.community ?? 'hu') === community && entry.salt && entry.hash
+  )
 }
 
 // Claim-on-first-login: set a player's PIN if they don't have one yet. The original
 // Convex PIN hashes were never migrated to Neon, so a player's first PIN becomes their PIN.
 // Returns false if a PIN already exists (caller should verify instead).
-export async function setPlayerPinInNeon(player: string, pin: string, community: 'hu' | 'en' = 'hu'): Promise<boolean> {
+export async function setPlayerPinInNeon(
+  player: string,
+  pin: string,
+  community: 'hu' | 'en' = 'hu'
+): Promise<boolean> {
   if (await playerHasPin(player, community)) return false
   const salt = crypto.randomUUID().replace(/-/g, '')
   const hash = await sha256Hex(`${salt}:${pin}`)
@@ -74,6 +138,24 @@ export async function setPlayerPinInNeon(player: string, pin: string, community:
     source: 'claim-on-first-login'
   })
   return true
+}
+
+// Admin reset: overwrite a player's PIN hash without needing the old PIN.
+export async function resetPlayerPinInNeon(
+  player: string,
+  pin: string,
+  community: 'hu' | 'en' = 'hu'
+): Promise<void> {
+  const salt = crypto.randomUUID().replace(/-/g, '')
+  const hash = await sha256Hex(`${salt}:${pin}`)
+  await upsertImportedRow('pinHashes', `${community}:${player}`, {
+    name: player,
+    community,
+    salt,
+    hash,
+    setAt: Date.now(),
+    source: 'admin-reset-pin'
+  })
 }
 
 // Change a player's PIN. If they already have a PIN, the supplied `oldPin` must
@@ -216,7 +298,10 @@ async function loadStateTablesFromNeon(): Promise<Record<string, Row[]>> {
     } else if (row.tableName === 'wizardProfiles') {
       // wizardProfiles payloads ({ active, mirror }) also omit the player — inject
       // it from the convex_id so the engine and public state can key on it.
-      tables.wizardProfiles.push({ player: row.payload.player ?? playerFromConvexId(row.convexId), ...row.payload })
+      tables.wizardProfiles.push({
+        player: row.payload.player ?? playerFromConvexId(row.convexId),
+        ...row.payload
+      })
     } else {
       ;(tables[row.tableName] ??= []).push(row.payload)
     }

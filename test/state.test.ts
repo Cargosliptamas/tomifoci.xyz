@@ -159,6 +159,29 @@ describe('buildPublicState — score + ranking via the engine (C1)', () => {
     // hu scopes are all/vb/group/ko (no 'test') × the single 'Mindenki' league.
     expect(Object.keys(state.rankings).length).toBe(4)
   })
+
+  it('can scope heavy player detail while keeping leaderboard rows broad', () => {
+    const state = buildPublicState(
+      {
+        ...tables,
+        wizardPicks: [
+          { player: 'Anna', matchId: 1, pick: '1', oddsAtPick: 1.8, community: 'hu' },
+          { player: 'Bela', matchId: 1, pick: '2', oddsAtPick: 4.2, community: 'hu' }
+        ]
+      },
+      { community: 'hu', player: 'Anna', now: JULY_1_2026 }
+    )
+
+    expect(state.predictions[encodeClientKey('Anna')]).toBeDefined()
+    expect(state.predictions[encodeClientKey('Bela')]).toBeUndefined()
+    expect(state.scores[encodeClientKey('Anna')]).toBeDefined()
+    expect(state.scores[encodeClientKey('Bela')]).toBeUndefined()
+    expect(state.wizardPicks[encodeClientKey('Anna')]).toBeDefined()
+    expect(state.wizardPicks[encodeClientKey('Bela')]).toBeUndefined()
+    expect(
+      (state.rankings[encodeClientKey('all_Mindenki')] as Array<{ name: string }>).map((row) => row.name)
+    ).toEqual(['Anna', 'Bela'])
+  })
 })
 
 describe('buildPublicState — match centre events from apiCache', () => {

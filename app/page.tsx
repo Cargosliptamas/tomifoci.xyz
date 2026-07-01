@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 
 const COPY = {
@@ -10,7 +10,14 @@ const COPY = {
     sub: 'Eredmény-tipp, Wizard-odds és svájci párbaj — mind egy helyen, meccsenként. Nincs többé tabok közti ugrálás.',
     cta: 'Belépés',
     interest: 'Még nem játszol? Jelezz érdeklődést',
-    preview: '3 játék egy kártyán'
+    preview: '3 játék egy kártyán',
+    name: 'Név',
+    contact: 'Email vagy telefon',
+    message: 'Üzenet (opcionális)',
+    send: 'Érdeklődés küldése',
+    sent: 'Köszönjük, megkaptuk.',
+    missing: 'Név és elérhetőség szükséges.',
+    failed: 'Nem sikerült elküldeni. Próbáld újra.'
   },
   en: {
     eyebrow: 'WC 2026 · Prediction game',
@@ -18,13 +25,56 @@ const COPY = {
     sub: 'Score, Wizard odds and Swiss duel — all in one place, per match. No more tab-hopping.',
     cta: 'Enter',
     interest: 'Not playing yet? Register interest',
-    preview: '3 games, one card'
+    preview: '3 games, one card',
+    name: 'Name',
+    contact: 'Email or phone',
+    message: 'Message (optional)',
+    send: 'Send interest',
+    sent: 'Thanks, we received it.',
+    missing: 'Name and contact are required.',
+    failed: 'Could not send it. Try again.'
   }
 }
 
 export default function Landing() {
   const [lang, setLang] = useState<'hu' | 'en'>('hu')
+  const [interestOpen, setInterestOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [contact, setContact] = useState('')
+  const [message, setMessage] = useState('')
+  const [leadStatus, setLeadStatus] = useState<string | null>(null)
+  const [leadBusy, setLeadBusy] = useState(false)
   const t = COPY[lang]
+
+  async function submitInterest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!name.trim() || !contact.trim()) {
+      setLeadStatus(t.missing)
+      return
+    }
+    setLeadBusy(true)
+    setLeadStatus(null)
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, contact, message, community: lang })
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean }
+      if (res.ok && json.ok) {
+        setLeadStatus(t.sent)
+        setName('')
+        setContact('')
+        setMessage('')
+      } else {
+        setLeadStatus(t.failed)
+      }
+    } catch {
+      setLeadStatus(t.failed)
+    } finally {
+      setLeadBusy(false)
+    }
+  }
 
   return (
     <div
@@ -43,7 +93,9 @@ export default function Landing() {
               key={l}
               onClick={() => setLang(l)}
               className={`tap rounded-full px-3 py-[5px] text-xs uppercase ${
-                lang === l ? 'bg-white font-black text-[#0C4D49]' : 'font-extrabold text-white/70 hover:text-white'
+                lang === l
+                  ? 'bg-white font-black text-[#0C4D49]'
+                  : 'font-extrabold text-white/70 hover:text-white'
               }`}
             >
               {l}
@@ -71,8 +123,12 @@ export default function Landing() {
               <div className="text-xs font-bold">Mexikó</div>
             </div>
             <div className="flex gap-2">
-              <span className="tnum flex size-[34px] items-center justify-center rounded-[9px] bg-[#EBF6F5] font-black">2</span>
-              <span className="tnum flex size-[34px] items-center justify-center rounded-[9px] bg-[#EBF6F5] font-black">1</span>
+              <span className="tnum flex size-[34px] items-center justify-center rounded-[9px] bg-[#EBF6F5] font-black">
+                2
+              </span>
+              <span className="tnum flex size-[34px] items-center justify-center rounded-[9px] bg-[#EBF6F5] font-black">
+                1
+              </span>
             </div>
             <div className="text-center">
               <div className="text-[26px]">🇰🇷</div>
@@ -99,9 +155,51 @@ export default function Landing() {
         >
           {t.cta} →
         </Link>
-        <Link href="/login" className="mt-[13px] text-[13px] font-bold text-white/[0.78] underline underline-offset-[3px]">
+        <button
+          type="button"
+          onClick={() => setInterestOpen((open) => !open)}
+          className="mt-[13px] text-[13px] font-bold text-white/[0.78] underline underline-offset-[3px]"
+        >
           {t.interest}
-        </Link>
+        </button>
+
+        {interestOpen && (
+          <form
+            onSubmit={submitInterest}
+            className="mt-4 w-full max-w-[340px] rounded-[18px] bg-white/10 p-3.5 text-left"
+          >
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t.name}
+              className="mb-2 w-full rounded-[11px] border border-white/15 bg-white px-3.5 py-2.5 text-[14px] font-semibold text-[#0D3331] outline-none placeholder:text-[#0D3331]/40"
+            />
+            <input
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder={t.contact}
+              className="mb-2 w-full rounded-[11px] border border-white/15 bg-white px-3.5 py-2.5 text-[14px] font-semibold text-[#0D3331] outline-none placeholder:text-[#0D3331]/40"
+            />
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={t.message}
+              rows={3}
+              className="mb-2 w-full resize-none rounded-[11px] border border-white/15 bg-white px-3.5 py-2.5 text-[14px] font-semibold text-[#0D3331] outline-none placeholder:text-[#0D3331]/40"
+            />
+            <button
+              type="submit"
+              disabled={leadBusy}
+              className="w-full rounded-[11px] px-4 py-2.5 text-[13px] font-black disabled:opacity-60"
+              style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+            >
+              {leadBusy ? '…' : t.send}
+            </button>
+            {leadStatus && (
+              <div className="mt-2 text-center text-[12px] font-bold text-white/80">{leadStatus}</div>
+            )}
+          </form>
+        )}
       </div>
     </div>
   )

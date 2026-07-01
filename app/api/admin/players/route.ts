@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getSql } from '@/lib/db'
+import { getSql, resetPlayerPinInNeon } from '@/lib/db'
 import {
   adminGuard,
   logTxn,
@@ -26,10 +26,11 @@ export const runtime = 'nodejs'
 const TEN_DAYS_MS = 10 * 24 * 3600 * 1000
 
 type Body = {
-  action?: 'create' | 'rename' | 'delete' | 'restore'
+  action?: 'create' | 'rename' | 'delete' | 'restore' | 'setPin'
   name?: string
   oldName?: string
   newName?: string
+  pin?: string
   community?: 'hu' | 'en'
 }
 
@@ -56,6 +57,8 @@ export async function POST(request: Request) {
         return await deletePlayer(String(body.name ?? ''), community)
       case 'restore':
         return await restorePlayer(String(body.name ?? ''), community)
+      case 'setPin':
+        return await setPlayerPin(String(body.name ?? ''), String(body.pin ?? ''), community)
       default:
         return NextResponse.json({ ok: false, error: 'bad-action' }, { status: 400 })
     }
@@ -151,11 +154,22 @@ async function renamePlayer(oldName: string, newName: string, community: 'hu' | 
     await writeRoster(community, roster.settingsId, next)
   }
 
-  await logTxn({ type: 'rename', label: `Átnevezés: ${oldName} → ${newName}`, path: 'players', before: oldName, after: newName })
+  await logTxn({
+    type: 'rename',
+    label: `Átnevezés: ${oldName} → ${newName}`,
+    path: 'players',
+    before: oldName,
+    after: newName
+  })
   return NextResponse.json({ ok: true })
 }
 
-function newKeyFor(table: string, row: { convexId: string | null; payload: Record<string, any> }, name: string, community: 'hu' | 'en') {
+function newKeyFor(
+  table: string,
+  row: { convexId: string | null; payload: Record<string, any> },
+  name: string,
+  community: 'hu' | 'en'
+) {
   if (table === 'wizardPicks') {
     const matchId = row.payload?.matchId
     return matchId != null ? `${community}:${name}:${matchId}` : `${community}:${name}`
@@ -178,7 +192,8 @@ async function deletePlayer(name: string, community: 'hu' | 'en') {
   const tables = community === 'en' ? NAME_KEYED_TABLES : [...NAME_KEYED_TABLES, ...HU_ONLY_TABLES]
   for (const table of tables) {
     const rows = await importedRowsWithIds(table)
-    for (const row of rows) if (rowMatchesPlayer(table, row, name, community)) await deleteImportedRowById(row.id)
+    for (const row of rows)
+      if (rowMatchesPlayer(table, row, name, community)) await deleteImportedRowById(row.id)
   }
 
   // swissPairings: opponents of a removed player get a bye (HU-only).
@@ -191,7 +206,8 @@ async function deletePlayer(name: string, community: 'hu' | 'en') {
       if (!aIs && !bIs) continue
       if (aIs && bIs) await deleteImportedRowById(row.id)
       else if (aIs) {
-        if (p.b) await sql`UPDATE imported_rows SET payload = ${JSON.stringify({ ...p, a: p.b, b: null })}::jsonb WHERE id = ${row.id}`
+        if (p.b)
+          await sql`UPDATE imported_rows SET payload = ${JSON.stringify({ ...p, a: p.b, b: null })}::jsonb WHERE id = ${row.id}`
         else await deleteImportedRowById(row.id)
       } else {
         await sql`UPDATE imported_rows SET payload = ${JSON.stringify({ ...p, b: null })}::jsonb WHERE id = ${row.id}`
@@ -213,7 +229,13 @@ async function deletePlayer(name: string, community: 'hu' | 'en') {
     ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
   `
 
-  await logTxn({ type: 'player_delete', label: `Játékos törölve (10 napig visszaállítható): ${name}`, path: 'players', before: name, after: null })
+  await logTxn({
+    type: 'player_delete',
+    label: `Játékos törölve (10 napig visszaállítható): ${name}`,
+    path: 'players',
+    before: name,
+    after: null
+  })
   return NextResponse.json({ ok: true, deleted: name })
 }
 
@@ -228,7 +250,9 @@ async function snapshotPlayer(name: string, community: 'hu' | 'en') {
   const tables = community === 'en' ? NAME_KEYED_TABLES : [...NAME_KEYED_TABLES, ...HU_ONLY_TABLES]
   for (const table of tables) {
     const rows = await importedRowsWithIds(table)
-    data[table] = rows.filter((row) => rowMatchesPlayer(table, row, name, community)).map((row) => ({ convexId: row.convexId, payload: row.payload }))
+    data[table] = rows
+      .filter((row) => rowMatchesPlayer(table, row, name, community))
+      .map((row) => ({ convexId: row.convexId, payload: row.payload }))
   }
 
   const roster = await readRoster(community)
@@ -268,7 +292,10 @@ async function restorePlayer(name: string, community: 'hu' | 'en') {
   // Re-insert each archived imported row under its stored key.
   const tables = community === 'en' ? NAME_KEYED_TABLES : [...NAME_KEYED_TABLES, ...HU_ONLY_TABLES]
   for (const table of tables) {
-    for (const entry of (data[table] ?? []) as Array<{ convexId: string | null; payload: Record<string, any> }>) {
+    for (const entry of (data[table] ?? []) as Array<{
+      convexId: string | null
+      payload: Record<string, any>
+    }>) {
       const key = entry.convexId ?? `${community}:${name}:${crypto.randomUUID().slice(0, 8)}`
       await sql`
         INSERT INTO imported_rows (table_name, convex_id, payload)
@@ -285,6 +312,31 @@ async function restorePlayer(name: string, community: 'hu' | 'en') {
   }
 
   await sql`DELETE FROM imported_rows WHERE id = ${row.id}`
-  await logTxn({ type: 'player_restore', label: `Játékos visszaállítva: ${name}`, path: 'players', before: null, after: name })
+  await logTxn({
+    type: 'player_restore',
+    label: `Játékos visszaállítva: ${name}`,
+    path: 'players',
+    before: null,
+    after: name
+  })
   return NextResponse.json({ ok: true, restored: name })
+}
+
+async function setPlayerPin(name: string, pin: string, community: 'hu' | 'en') {
+  if (!name || !/^\d{4}$/.test(pin)) {
+    return NextResponse.json({ ok: false, error: 'bad-request' }, { status: 400 })
+  }
+  const roster = await readRoster(community)
+  if (roster && !roster.players.some((p) => p.name === name)) {
+    return NextResponse.json({ ok: false, error: 'player-not-found' }, { status: 404 })
+  }
+  await resetPlayerPinInNeon(name, pin, community)
+  await logTxn({
+    type: 'player_pin_reset',
+    label: `PIN reset: ${name}`,
+    path: 'players',
+    before: null,
+    after: { player: name, community }
+  })
+  return NextResponse.json({ ok: true })
 }

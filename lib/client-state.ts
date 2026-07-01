@@ -28,6 +28,7 @@ const INITIAL_MATCH_CENTRE_LIMIT = 20
 export type PublicStateOptions = {
   community?: string
   now?: number
+  player?: string | null
 }
 
 export { encodeClientKey }
@@ -36,6 +37,7 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
   const community = options.community ?? 'hu'
   const isEnglish = community === 'en'
   const now = options.now ?? Date.now()
+  const player = normalizePlayerOption(options.player)
   const effectiveTables = withFinalLiveResults(tables)
   const initialMatchCentreIds = initialMatchCentreMatchIds(now)
   const settingsRow = first(tables.settings) ?? { leagues: ['Alapliga'], players: [] }
@@ -81,7 +83,7 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
 
   return {
     settings,
-    predictions: groupRows(effectiveTables.predictions, community, (row) => [
+    predictions: groupRows(playerRows(effectiveTables.predictions, player), community, (row) => [
       row.player,
       row.matchId,
       { h: row.h, a: row.a }
@@ -121,7 +123,7 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
       row.kind,
       { ts: row.ts, data: row.data }
     ]),
-    scores: mapCommunityRows(scoreRows, community, (row) => [
+    scores: mapCommunityRows(playerRows(scoreRows, player), community, (row) => [
       row.player,
       pick(row, [
         'pts',
@@ -137,7 +139,7 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
       ])
     ]),
     rankings: rankingsForCommunity(rankingRows, isEnglish),
-    wizardPicks: groupRows(effectiveTables.wizardPicks, 'hu', (row) => [
+    wizardPicks: groupRows(playerRows(effectiveTables.wizardPicks, player), 'hu', (row) => [
       row.player,
       row.matchId,
       { pick: row.pick, oddsAtPick: row.oddsAtPick }
@@ -441,6 +443,16 @@ function mapResults(tables: Tables): Result[] {
 
 function first(rows: Row[] | undefined) {
   return rows?.[0]
+}
+
+function normalizePlayerOption(player: string | null | undefined): string | null {
+  const value = String(player ?? '').trim()
+  return value ? value : null
+}
+
+function playerRows(rows: Row[] | undefined, player: string | null): Row[] | undefined {
+  if (!player) return rows
+  return (rows ?? []).filter((row) => row.player === player)
 }
 
 function withFinalLiveResults(tables: Tables): Tables {

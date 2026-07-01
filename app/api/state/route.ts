@@ -17,23 +17,25 @@ const inflight = new Map<string, Promise<unknown>>()
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const community = url.searchParams.get('community') === 'en' ? 'en' : 'hu'
+  const player = url.searchParams.get('player')?.trim() || null
   const fresh = url.searchParams.get('fresh') === '1' // bypass cache after a write
+  const cacheKey = player ? `${community}:${player}` : community
 
-  const hit = cache.get(community)
+  const hit = cache.get(cacheKey)
   if (!fresh && hit && Date.now() - hit.ts < TTL_MS) {
     return NextResponse.json(hit.payload, { headers: { 'x-cache': 'hit' } })
   }
 
   try {
     // De-dupe concurrent recomputes for the same community.
-    let p = inflight.get(community)
+    let p = inflight.get(cacheKey)
     if (!p) {
-      p = loadPublicStateFromNeon(community).then((state) => ({ ok: true, state }))
-      inflight.set(community, p)
-      p.finally(() => inflight.delete(community))
+      p = loadPublicStateFromNeon(community, { player }).then((state) => ({ ok: true, state }))
+      inflight.set(cacheKey, p)
+      p.finally(() => inflight.delete(cacheKey))
     }
     const payload = await p
-    cache.set(community, { ts: Date.now(), payload })
+    cache.set(cacheKey, { ts: Date.now(), payload })
     return NextResponse.json(payload, { headers: { 'x-cache': 'miss' } })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'

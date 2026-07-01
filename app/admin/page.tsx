@@ -58,14 +58,21 @@ const TITLES: Record<Section, readonly [string, string]> = {
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
-async function adminPost(path: string, token: string, body: unknown): Promise<{ ok: boolean; error?: string }> {
+async function adminPost(
+  path: string,
+  token: string,
+  body: unknown
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/admin/${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-admin-token': token },
       body: JSON.stringify(body)
     })
-    const json = (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as { ok?: boolean; error?: string }
+    const json = (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as {
+      ok?: boolean
+      error?: string
+    }
     if (json.ok) return { ok: true }
     return { ok: false, error: json.error ?? `http-${res.status}` }
   } catch {
@@ -160,7 +167,9 @@ export default function AdminPage() {
           <div className="text-[13px]" style={{ color: '#9fe6dd' }}>
             VB Tippjáték 2026 · üzemeltetés
           </div>
-          <div className="mono mt-[10px] text-[11px] tracking-[0.04em] text-white/50">ADMIN_TOKEN belépés</div>
+          <div className="mono mt-[10px] text-[11px] tracking-[0.04em] text-white/50">
+            ADMIN_TOKEN belépés
+          </div>
           <input
             type="password"
             value={token}
@@ -176,8 +185,8 @@ export default function AdminPage() {
             Belépés
           </button>
           <div className="mt-4 text-[11px] text-white/40">
-            A token a Vercel <span className="mono">ADMIN_TOKEN</span> változójával egyezik. Ha nincs beállítva,
-            az írási műveletek le vannak tiltva.
+            A token a Vercel <span className="mono">ADMIN_TOKEN</span> változójával egyezik. Ha nincs
+            beállítva, az írási műveletek le vannak tiltva.
           </div>
         </div>
       </div>
@@ -192,7 +201,10 @@ export default function AdminPage() {
         {/* nav */}
         <nav className="flex gap-1.5 overflow-x-auto border-b border-[#E1EAEA] bg-white px-3.5 py-2.5 lg:h-[100dvh] lg:flex-col lg:gap-0.5 lg:border-b-0 lg:border-r lg:px-3 lg:py-[18px]">
           <div className="mb-2 hidden items-center gap-2 px-3 lg:flex">
-            <span className="flex size-[30px] items-center justify-center rounded-[9px] text-white" style={{ background: 'linear-gradient(160deg,#0C4D49,#0F6A64)' }}>
+            <span
+              className="flex size-[30px] items-center justify-center rounded-[9px] text-white"
+              style={{ background: 'linear-gradient(160deg,#0C4D49,#0F6A64)' }}
+            >
               🛡️
             </span>
             <span className="text-[15px] font-black">Admin</span>
@@ -224,7 +236,9 @@ export default function AdminPage() {
               </span>
               <span className="flex items-center gap-[7px] rounded-full border border-[#E1EAEA] bg-white py-1 pl-3 pr-[5px]">
                 <span className="text-[12px] font-extrabold">Tomi</span>
-                <span className="rounded-full bg-[#fff3d6] px-[7px] py-[2px] text-[9px] font-extrabold text-[#9a6b00]">FŐADMIN</span>
+                <span className="rounded-full bg-[#fff3d6] px-[7px] py-[2px] text-[9px] font-extrabold text-[#9a6b00]">
+                  FŐADMIN
+                </span>
                 <button
                   onClick={() => {
                     setAuthed(false)
@@ -241,21 +255,34 @@ export default function AdminPage() {
           </div>
 
           <div className="animate-in">
-            {section === 'dash' && <Dashboard state={state} onRecompute={() => void loadState().then(() => showToast('✓ Állapot frissítve'))} />}
+            {section === 'dash' && (
+              <Dashboard
+                state={state}
+                onRecompute={() => void loadState().then(() => showToast('✓ Állapot frissítve'))}
+              />
+            )}
             {section === 'players' && <Players state={state} ask={ask} write={write} showToast={showToast} />}
-            {section === 'results' && <Results token={token} onSaved={(m) => void loadState().then(() => showToast(m))} />}
+            {section === 'results' && (
+              <Results
+                token={token}
+                state={state}
+                onSaved={(m) => void loadState().then(() => showToast(m))}
+              />
+            )}
             {section === 'override' && <Override state={state} ask={ask} write={write} />}
             {section === 'bonus' && <Bonuses state={state} ask={ask} write={write} />}
             {section === 'swiss' && <Swiss state={state} ask={ask} write={write} />}
             {section === 'api' && <ApiSection state={state} ask={ask} write={write} showToast={showToast} />}
             {section === 'log' && <LogSection state={state} ask={ask} write={write} showToast={showToast} />}
-            {section === 'leads' && <Leads />}
+            {section === 'leads' && <Leads token={token} showToast={showToast} />}
             {section === 'backup' && (
               <Backup
                 token={token}
                 ask={ask}
                 showToast={showToast}
-                onApplied={() => void loadState().then(() => showToast('✓ Állapot visszaállítva mentésből · naplózva'))}
+                onApplied={() =>
+                  void loadState().then(() => showToast('✓ Állapot visszaállítva mentésből · naplózva'))
+                }
               />
             )}
             {section === 'diag' && <Diagnostics token={token} />}
@@ -269,7 +296,10 @@ export default function AdminPage() {
           className="fixed inset-0 z-[60] flex items-center justify-center px-6"
           style={{ background: 'rgba(8,54,60,.5)', backdropFilter: 'blur(3px)' }}
         >
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[380px] rounded-[18px] bg-white p-[22px] shadow-[0_24px_60px_rgba(8,54,60,0.4)]">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[380px] rounded-[18px] bg-white p-[22px] shadow-[0_24px_60px_rgba(8,54,60,0.4)]"
+          >
             <div className="mb-2 text-[18px] font-black">{confirm.title}</div>
             <div className="mb-5 text-[14px] leading-[1.5] text-[#11302E]/70">{confirm.body}</div>
             <div className="flex justify-end gap-2.5">
@@ -286,7 +316,11 @@ export default function AdminPage() {
                   c.onYes()
                 }}
                 className="rounded-[11px] px-[18px] py-[11px] text-[14px] font-extrabold text-white"
-                style={confirm.danger ? { background: '#E5484D' } : { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+                style={
+                  confirm.danger
+                    ? { background: '#E5484D' }
+                    : { background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }
+                }
               >
                 {confirm.yes ?? 'Megerősítés'}
               </button>
@@ -308,7 +342,9 @@ export default function AdminPage() {
 
 function Dashboard({ state, onRecompute }: { state: GameState | null; onRecompute: () => void }) {
   const players = state?.settings.players?.length ?? 0
-  const predictions = state ? Object.values(state.predictions).reduce((n, m) => n + Object.keys(m).length, 0) : 0
+  const predictions = state
+    ? Object.values(state.predictions).reduce((n, m) => n + Object.keys(m).length, 0)
+    : 0
   const results = state ? Object.keys(state.results).length : 0
   const round = state?.swiss?.round
   const log = txnEntries(state)
@@ -324,7 +360,11 @@ function Dashboard({ state, onRecompute }: { state: GameState | null; onRecomput
       <div className="grid gap-3.5 lg:grid-cols-2">
         <div className="rounded-[16px] border border-[#E1EAEA] bg-white p-4">
           <div className="text-xs font-black tracking-[0.08em] text-[#11302E]/55">RENDSZERÁLLAPOT</div>
-          <Status label="Adatbázis (Neon)" ok={Boolean(state)} value={state ? 'kapcsolódva' : 'nincs kapcsolat'} />
+          <Status
+            label="Adatbázis (Neon)"
+            ok={Boolean(state)}
+            value={state ? 'kapcsolódva' : 'nincs kapcsolat'}
+          />
           <Status label="Pontok forrása" ok value="élő újraszámítás" />
           <Status label="Svájci forduló" ok={Boolean(round)} value={round ? `${round}. forduló` : '—'} />
           <button
@@ -361,7 +401,17 @@ function Dashboard({ state, onRecompute }: { state: GameState | null; onRecomput
 
 // ── PLAYERS ─────────────────────────────────────────────────────────────────
 
-function Players({ state, ask, write, showToast }: { state: GameState | null; ask: AskFn; write: WriteFn; showToast: (m: string) => void }) {
+function Players({
+  state,
+  ask,
+  write,
+  showToast
+}: {
+  state: GameState | null
+  ask: AskFn
+  write: WriteFn
+  showToast: (m: string) => void
+}) {
   const [search, setSearch] = useState('')
   const players = state?.settings.players ?? []
   const q = search.toLowerCase()
@@ -389,7 +439,7 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
         <div className="flex border-b border-[#EEF3F3] px-4 py-2.5 text-[11px] font-black tracking-[0.06em] text-[#11302E]/45">
           <span className="flex-1">JÁTÉKOS</span>
           <span className="w-[120px]">LIGA</span>
-          <span className="w-[120px] text-right">MŰVELET</span>
+          <span className="w-[156px] text-right">MŰVELET</span>
         </div>
         {list.length === 0 ? (
           <div className="px-4 py-6 text-center text-[13px] text-[#11302E]/50">
@@ -397,24 +447,52 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
           </div>
         ) : (
           list.map((p) => (
-            <div key={p.name} className="flex items-center border-b border-[#F1F5F5] px-4 py-[11px] last:border-b-0">
+            <div
+              key={p.name}
+              className="flex items-center border-b border-[#F1F5F5] px-4 py-[11px] last:border-b-0"
+            >
               <span className="flex flex-1 items-center gap-2.5">
                 <span className="flex size-[30px] items-center justify-center rounded-full bg-[#EBF6F5] text-[12px] font-black text-[#007E73]">
                   {p.name.charAt(0).toUpperCase()}
                 </span>
                 <span className="text-[14px] font-bold">{p.name}</span>
               </span>
-              <span className="w-[120px] text-[12px] font-semibold text-[#11302E]/60">{p.leagues?.[0] ?? '—'}</span>
-              <span className="flex w-[120px] justify-end gap-1.5">
+              <span className="w-[120px] text-[12px] font-semibold text-[#11302E]/60">
+                {p.leagues?.[0] ?? '—'}
+              </span>
+              <span className="flex w-[156px] justify-end gap-1.5">
                 <button
                   onClick={() => {
                     const newName = window.prompt(`Új név (jelenlegi: ${p.name})`, p.name)?.trim()
                     if (!newName || newName === p.name) return
-                    void write('players', { action: 'rename', oldName: p.name, newName }, `✓ Átnevezve — ${p.name} → ${newName} · naplózva`)
+                    void write(
+                      'players',
+                      { action: 'rename', oldName: p.name, newName },
+                      `✓ Átnevezve — ${p.name} → ${newName} · naplózva`
+                    )
                   }}
                   className="rounded-[8px] border border-[#E1EAEA] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#11302E]"
                 >
                   ✏️
+                </button>
+                <button
+                  onClick={() => {
+                    const pin = window.prompt(`Új 4 jegyű PIN (${p.name})`, '')?.trim()
+                    if (!pin) return
+                    if (!/^\d{4}$/.test(pin)) {
+                      showToast('A PIN 4 számjegy legyen')
+                      return
+                    }
+                    void write(
+                      'players',
+                      { action: 'setPin', name: p.name, pin },
+                      `✓ PIN frissítve — ${p.name} · naplózva`
+                    )
+                  }}
+                  className="rounded-[8px] border border-[#E1EAEA] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#11302E]"
+                  title="PIN reset"
+                >
+                  🔑
                 </button>
                 <button
                   onClick={() =>
@@ -423,7 +501,12 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
                       body: `„${p.name}” archiválásra kerül és 10 napig visszaállítható. A tippjei és származtatott pontjai eltávolításra kerülnek a rangsorból.`,
                       danger: true,
                       yes: 'Archiválás',
-                      onYes: () => void write('players', { action: 'delete', name: p.name }, `✓ Játékos archiválva — ${p.name} · naplózva`)
+                      onYes: () =>
+                        void write(
+                          'players',
+                          { action: 'delete', name: p.name },
+                          `✓ Játékos archiválva — ${p.name} · naplózva`
+                        )
                     })
                   }
                   className="rounded-[8px] border border-[#f3d2cf] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#E5484D]"
@@ -437,7 +520,8 @@ function Players({ state, ask, write, showToast }: { state: GameState | null; as
       </div>
 
       <div className="mb-2.5 text-xs font-black tracking-[0.08em] text-[#11302E]/55">
-        🗄 TÖRÖLT JÁTÉKOSOK <span className="font-bold text-[#11302E]/40">· 10 napos visszaállítási ablak</span>
+        🗄 TÖRÖLT JÁTÉKOSOK{' '}
+        <span className="font-bold text-[#11302E]/40">· 10 napos visszaállítási ablak</span>
       </div>
       <RestoreDeletedPlayer write={write} />
     </>
@@ -452,7 +536,8 @@ function RestoreDeletedPlayer({ write }: { write: WriteFn }) {
   return (
     <div className="rounded-[16px] border border-[#E1EAEA] bg-white p-4">
       <div className="mb-2.5 text-[13px] text-[#11302E]/60">
-        Egy archivált játékos visszaállításához add meg a pontos nevét. A visszaállítás csak a 10 napos ablakon belül lehetséges.
+        Egy archivált játékos visszaállításához add meg a pontos nevét. A visszaállítás csak a 10 napos
+        ablakon belül lehetséges.
       </div>
       <div className="flex flex-wrap gap-2.5">
         <input
@@ -481,17 +566,28 @@ function RestoreDeletedPlayer({ write }: { write: WriteFn }) {
 
 // ── RESULTS (existing — unchanged behaviour) ────────────────────────────────
 
-function Results({ token, onSaved }: { token: string; onSaved: (msg: string) => void }) {
+function Results({
+  token,
+  state,
+  onSaved
+}: {
+  token: string
+  state: GameState | null
+  onSaved: (msg: string) => void
+}) {
   const [search, setSearch] = useState('')
   const list = useMemo(() => {
     const q = search.toLowerCase()
-    return MATCHES.filter((m) => !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || String(m.id) === q).slice(0, 60)
+    return MATCHES.filter(
+      (m) => !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || String(m.id) === q
+    ).slice(0, 60)
   }, [search])
 
   return (
     <>
       <div className="mb-4 rounded-[12px] border border-[#d3e6e4] bg-[#eef6f6] px-[15px] py-3 text-[13px] text-[#11302E]">
-        ⚠️ Eredmény mentése azonnal újraszámolja az érintett pontokat. A mentés <b>upsert</b> — nincs tömeges felülírás.
+        ⚠️ Eredmény mentése azonnal újraszámolja az érintett pontokat. A mentés <b>upsert</b> — nincs tömeges
+        felülírás.
       </div>
       <input
         value={search}
@@ -505,12 +601,139 @@ function Results({ token, onSaved }: { token: string; onSaved: (msg: string) => 
         ))}
       </div>
 
-      <div className="mb-2.5 mt-[22px] text-xs font-black tracking-[0.08em] text-[#11302E]/55">🏆 KIESÉSES PÁROSÍTÁSOK (KO)</div>
-      <div className="rounded-[14px] border border-[#E1EAEA] bg-white p-[15px] text-[13px] text-[#11302E]/70">
-        A KO-helyek a csoporteredményekből <b>automatikusan</b> származnak (bracket.autoUpdateBracket). Kézi felülírás csak
-        vészhelyzetben — minden manuális slot jelölve lesz.
+      <div className="mb-2.5 mt-[22px] text-xs font-black tracking-[0.08em] text-[#11302E]/55">
+        🏆 KIESÉSES PÁROSÍTÁSOK (KO)
       </div>
+      <div className="rounded-[14px] border border-[#E1EAEA] bg-white p-[15px] text-[13px] text-[#11302E]/70">
+        A KO-helyek a csoporteredményekből <b>automatikusan</b> származnak (bracket.autoUpdateBracket). Kézi
+        felülírás csak vészhelyzetben — minden manuális slot jelölve lesz.
+      </div>
+      <KoTeamsEditor token={token} state={state} onSaved={onSaved} />
     </>
+  )
+}
+
+function KoTeamsEditor({
+  token,
+  state,
+  onSaved
+}: {
+  token: string
+  state: GameState | null
+  onSaved: (msg: string) => void
+}) {
+  const koMatches = useMemo(() => MATCHES.filter((m) => m.id >= 73), [])
+  const [matchId, setMatchId] = useState(koMatches[0]?.id ?? 73)
+  const [home, setHome] = useState('')
+  const [away, setAway] = useState('')
+  const [confirmed, setConfirmed] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const current = state?.koTeams[String(matchId)]
+  const fixture = koMatches.find((m) => m.id === matchId)
+
+  useEffect(() => {
+    setHome(current?.home ?? '')
+    setAway(current?.away ?? '')
+    setConfirmed(current?.confirmed !== false)
+  }, [matchId, current?.home, current?.away, current?.confirmed])
+
+  async function send(action: 'save' | 'clear') {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/admin/koteams', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        body: JSON.stringify(
+          action === 'clear' ? { matchId, action: 'clear' } : { matchId, home, away, confirmed }
+        )
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (json.ok) {
+        onSaved(
+          action === 'clear'
+            ? `✓ KO párosítás törölve — #${matchId} · naplózva`
+            : `✓ KO párosítás mentve — #${matchId} · naplózva`
+        )
+      } else {
+        setErr(json.error === 'unauthorized' ? 'Hibás token' : (json.error ?? 'hiba'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3.5 rounded-[16px] border border-[#E1EAEA] bg-white p-4">
+      <div className="mb-3 text-xs font-black tracking-[0.08em] text-[#11302E]/55">KO KÉZI PÁROSÍTÁS</div>
+      <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr_auto] lg:items-end">
+        <label className="text-[12px] font-extrabold text-[#11302E]/60">
+          Meccs
+          <select
+            value={matchId}
+            onChange={(e) => setMatchId(Number(e.target.value))}
+            className="mt-1.5 w-full rounded-[11px] border border-[#E1EAEA] bg-white px-[13px] py-[11px] text-[14px] font-semibold"
+          >
+            {koMatches.map((m) => (
+              <option key={m.id} value={m.id}>
+                #{m.id} · {m.label ?? 'KO'} · {m.home} – {m.away}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-[12px] font-extrabold text-[#11302E]/60">
+          Hazai
+          <input
+            value={home}
+            onChange={(e) => setHome(e.target.value)}
+            placeholder={fixture?.home ?? 'Hazai'}
+            className="mt-1.5 w-full rounded-[11px] border border-[#E1EAEA] px-[13px] py-[11px] text-[14px]"
+          />
+        </label>
+        <label className="text-[12px] font-extrabold text-[#11302E]/60">
+          Vendég
+          <input
+            value={away}
+            onChange={(e) => setAway(e.target.value)}
+            placeholder={fixture?.away ?? 'Vendég'}
+            className="mt-1.5 w-full rounded-[11px] border border-[#E1EAEA] px-[13px] py-[11px] text-[14px]"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => void send('save')}
+            disabled={busy || !home.trim() || !away.trim()}
+            className="rounded-[11px] px-4 py-[11px] text-[13px] font-black disabled:opacity-50"
+            style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+          >
+            Mentés
+          </button>
+          <button
+            onClick={() => void send('clear')}
+            disabled={busy}
+            className="rounded-[11px] border border-[#f3d2cf] bg-white px-3.5 py-[11px] text-[13px] font-bold text-[#E5484D]"
+          >
+            Törlés
+          </button>
+        </div>
+      </div>
+      <label className="mt-3 flex items-center gap-2 text-[12px] font-bold text-[#11302E]/65">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+          className="size-[16px]"
+        />
+        Admin által megerősített párosítás
+      </label>
+      {current?.home && current?.away && (
+        <div className="mt-2 text-[12px] text-[#11302E]/55">
+          Élő érték: {flag(current.home)} {current.home} – {current.away} {flag(current.away)}
+        </div>
+      )}
+      {err && <div className="mt-2 text-[12px] font-bold text-[#E5484D]">{err}</div>}
+    </div>
   )
 }
 
@@ -543,8 +766,20 @@ function ResultRow({
         )
       })
       const json = await res.json().catch(() => ({}))
-      if (json.ok) onSaved(action === 'clear' ? `✓ Eredmény törölve — #${fixture.id} · naplózva` : `✓ Eredmény mentve — #${fixture.id} · ${h}:${a}`)
-      else setErr(json.error === 'admin-not-configured' ? 'ADMIN_TOKEN nincs beállítva a Vercelben' : json.error === 'unauthorized' ? 'Hibás token' : json.error ?? 'hiba')
+      if (json.ok)
+        onSaved(
+          action === 'clear'
+            ? `✓ Eredmény törölve — #${fixture.id} · naplózva`
+            : `✓ Eredmény mentve — #${fixture.id} · ${h}:${a}`
+        )
+      else
+        setErr(
+          json.error === 'admin-not-configured'
+            ? 'ADMIN_TOKEN nincs beállítva a Vercelben'
+            : json.error === 'unauthorized'
+              ? 'Hibás token'
+              : (json.error ?? 'hiba')
+        )
     } finally {
       setBusy(false)
     }
@@ -563,7 +798,9 @@ function ResultRow({
       </div>
       {isKo && (
         <div className="flex items-center gap-2 rounded-[10px] border border-[#E1EAEA] bg-[#f6faf9] px-2.5 py-1.5">
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#11302E]/45">11-esek</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#11302E]/45">
+            11-esek
+          </span>
           <Step value={penH} set={setPenH} />
           <span className="text-[16px] font-black text-[#11302E]/40">:</span>
           <Step value={penA} set={setPenA} />
@@ -603,8 +840,8 @@ function Override({ state, ask, write }: { state: GameState | null; ask: AskFn; 
   return (
     <div className="max-w-[520px]">
       <div className="mb-4 rounded-[12px] border border-[#f3d9a6] bg-[#fff7e6] px-[15px] py-3 text-[13px] text-[#92600c]">
-        Egy játékos tippjének felülírása érzékeny művelet — naplózásra kerül és újraszámolja a pontokat (a Wizard-tükrözést
-        is). Csak indokolt esetben.
+        Egy játékos tippjének felülírása érzékeny művelet — naplózásra kerül és újraszámolja a pontokat (a
+        Wizard-tükrözést is). Csak indokolt esetben.
       </div>
       <div className="rounded-[16px] border border-[#E1EAEA] bg-white p-[18px]">
         <label className="text-[12px] font-extrabold text-[#11302E]/60">Játékos</label>
@@ -648,7 +885,11 @@ function Override({ state, ask, write }: { state: GameState | null; ask: AskFn; 
               body: `A(z) „${selectedPlayer}” tippje a #${matchId} mérkőzésen ${h}:${a} értékre íródik felül, naplózásra kerül, és a pontok (a Wizard-tükrözéssel együtt) újraszámolódnak.`,
               yes: 'Felülírás',
               onYes: () =>
-                void write('override', { player: selectedPlayer, matchId, h, a }, `✓ Tipp felülírva — ${selectedPlayer} · #${matchId} · naplózva`)
+                void write(
+                  'override',
+                  { player: selectedPlayer, matchId, h, a },
+                  `✓ Tipp felülírva — ${selectedPlayer} · #${matchId} · naplózva`
+                )
             })
           }
           disabled={!selectedPlayer}
@@ -732,15 +973,21 @@ function Bonuses({ state, ask, write }: { state: GameState | null; ask: AskFn; w
       </div>
 
       <div className="overflow-hidden rounded-[16px] border border-[#E1EAEA] bg-white">
-        <div className="px-4 pb-2.5 pt-3.5 text-xs font-black tracking-[0.08em] text-[#11302E]/55">LEGUTÓBBI BÓNUSZOK</div>
+        <div className="px-4 pb-2.5 pt-3.5 text-xs font-black tracking-[0.08em] text-[#11302E]/55">
+          LEGUTÓBBI BÓNUSZOK
+        </div>
         {bonusList.length === 0 ? (
           <div className="px-4 pb-5 text-[13px] text-[#11302E]/50">Nincs rögzített bónusz.</div>
         ) : (
           bonusList.map((b) => (
-            <div key={`${b.name}-${b.idx}`} className="flex items-center border-t border-[#F1F5F5] px-4 py-[11px]">
+            <div
+              key={`${b.name}-${b.idx}`}
+              className="flex items-center border-t border-[#F1F5F5] px-4 py-[11px]"
+            >
               <div className="flex-1">
                 <div className="text-[14px] font-bold">
-                  {b.name} <span className="font-black text-[#15803d]">{b.pts >= 0 ? `+${b.pts}` : b.pts}</span>
+                  {b.name}{' '}
+                  <span className="font-black text-[#15803d]">{b.pts >= 0 ? `+${b.pts}` : b.pts}</span>
                 </div>
                 <div className="text-[12px] text-[#11302E]/55">{b.reason}</div>
               </div>
@@ -751,7 +998,12 @@ function Bonuses({ state, ask, write }: { state: GameState | null; ask: AskFn; w
                     body: `A(z) „${b.name}” ${b.pts >= 0 ? '+' : ''}${b.pts} bónusza eltávolításra kerül és a játékos pontszáma csökken.`,
                     danger: true,
                     yes: 'Visszavonás',
-                    onYes: () => void write('bonus', { action: 'remove', player: b.name, index: b.idx }, `✓ Bónusz visszavonva — ${b.name} · naplózva`)
+                    onYes: () =>
+                      void write(
+                        'bonus',
+                        { action: 'remove', player: b.name, index: b.idx },
+                        `✓ Bónusz visszavonva — ${b.name} · naplózva`
+                      )
                   })
                 }
                 className="rounded-[9px] border border-[#f3d2cf] bg-white px-3 py-1.5 text-[12px] font-bold text-[#E5484D]"
@@ -780,10 +1032,13 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-[14px] border border-[#E1EAEA] bg-white px-4 py-3.5">
         <span className="text-[14px] font-extrabold">Forduló:</span>
-        <span className="rounded-[9px] bg-[#EBF6F5] px-3.5 py-1.5 text-[14px] font-black text-[#007E73]">{round}. forduló</span>
+        <span className="rounded-[9px] bg-[#EBF6F5] px-3.5 py-1.5 text-[14px] font-black text-[#007E73]">
+          {round}. forduló
+        </span>
         <span className="flex-1 text-[12px] text-[#11302E]/55">
-          Állapot: <b className={frozen ? 'text-[#92600c]' : 'text-[#15803d]'}>{frozen ? 'befagyasztva' : 'aktív'}</b> · a
-          standings a 10. forduló után fagy be
+          Állapot:{' '}
+          <b className={frozen ? 'text-[#92600c]' : 'text-[#15803d]'}>{frozen ? 'befagyasztva' : 'aktív'}</b>{' '}
+          · a standings a 10. forduló után fagy be
         </span>
         <button
           onClick={() =>
@@ -792,7 +1047,12 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
               body: `A(z) ${round}. forduló párosításai újragenerálódnak és minden származtatott állapot újraszámolódik. A művelet naplózásra kerül.`,
               danger: true,
               yes: 'Újrasorsolás',
-              onYes: () => void write('swiss', { action: 'reshuffle', round }, `✓ ${round}. forduló újrasorsolva · naplózva`)
+              onYes: () =>
+                void write(
+                  'swiss',
+                  { action: 'reshuffle', round },
+                  `✓ ${round}. forduló újrasorsolva · naplózva`
+                )
             })
           }
           className="rounded-[10px] border border-[#f3d9a6] bg-[#fff7e6] px-3.5 py-2 text-[13px] font-extrabold text-[#92600c]"
@@ -823,7 +1083,13 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
 
       <div className="mb-4 flex flex-wrap gap-2.5">
         <button
-          onClick={() => void write('swiss', { action: 'publish', round }, `✓ ${round}. forduló párosítás publikálva · naplózva`)}
+          onClick={() =>
+            void write(
+              'swiss',
+              { action: 'publish', round },
+              `✓ ${round}. forduló párosítás publikálva · naplózva`
+            )
+          }
           className="rounded-[12px] px-[22px] py-3 text-[14px] font-black"
           style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
         >
@@ -832,7 +1098,9 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
       </div>
 
       <div className="overflow-hidden rounded-[16px] border border-[#E1EAEA] bg-white">
-        <div className="px-4 pb-2 pt-3.5 text-[11px] font-black tracking-[0.06em] text-[#11302E]/45">LIGA TAGOK · {round}. FORDULÓ</div>
+        <div className="px-4 pb-2 pt-3.5 text-[11px] font-black tracking-[0.06em] text-[#11302E]/45">
+          LIGA TAGOK · {round}. FORDULÓ
+        </div>
         <div className="flex flex-wrap gap-2.5 px-4 pb-3.5">
           <input
             value={addName}
@@ -844,7 +1112,11 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
             onClick={() => {
               const n = addName.trim()
               if (!n) return
-              void write('swiss', { action: 'add', player: n, round }, `✓ Játékos hozzáadva a ligához — ${n} · naplózva`)
+              void write(
+                'swiss',
+                { action: 'add', player: n, round },
+                `✓ Játékos hozzáadva a ligához — ${n} · naplózva`
+              )
               setAddName('')
             }}
             disabled={!addName.trim()}
@@ -869,7 +1141,12 @@ function Swiss({ state, ask, write }: { state: GameState | null; ask: AskFn; wri
                     body: `„${p.player}” kikerül a Svájci ligából a(z) ${round}. fordulótól. Az ellenfelei bye-t kapnak. A művelet naplózásra kerül.`,
                     danger: true,
                     yes: 'Eltávolítás',
-                    onYes: () => void write('swiss', { action: 'remove', player: p.player, round }, `✓ Játékos eltávolítva — ${p.player} · naplózva`)
+                    onYes: () =>
+                      void write(
+                        'swiss',
+                        { action: 'remove', player: p.player, round },
+                        `✓ Játékos eltávolítva — ${p.player} · naplózva`
+                      )
                   })
                 }
                 className="rounded-[9px] border border-[#f3d2cf] bg-white px-3 py-1.5 text-[12px] font-bold text-[#E5484D]"
@@ -928,7 +1205,9 @@ function ApiSection({
                     <div className="truncate text-[12px] font-bold" title={key}>
                       {key}
                     </div>
-                    <div className={`mono mt-0.5 text-[11px] ${fresh ? 'text-[#15803d]' : 'text-[#92600c]'}`}>{ago(v.ts)}</div>
+                    <div className={`mono mt-0.5 text-[11px] ${fresh ? 'text-[#15803d]' : 'text-[#92600c]'}`}>
+                      {ago(v.ts)}
+                    </div>
                   </div>
                 )
               })}
@@ -937,13 +1216,20 @@ function ApiSection({
       </div>
 
       <div className="rounded-[16px] border border-[#f3d2cf] bg-white p-4">
-        <div className="mb-1.5 text-xs font-black tracking-[0.08em] text-[#E5484D]">⚠️ VÉSZHELYZETI KÉZI POLL</div>
+        <div className="mb-1.5 text-xs font-black tracking-[0.08em] text-[#E5484D]">
+          ⚠️ VÉSZHELYZETI KÉZI POLL
+        </div>
         <div className="mb-3 text-[13px] text-[#11302E]/70">
-          A poll normál esetben automatikus (szerveroldali cron). A kézi lekérés kvótát éget — csak akkor, ha az automata
-          leállt.
+          A poll normál esetben automatikus (szerveroldali cron). A kézi lekérés kvótát éget — csak akkor, ha
+          az automata leállt.
         </div>
         <label className="mb-3 flex cursor-pointer items-center gap-2.5">
-          <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} className="size-[18px]" />
+          <input
+            type="checkbox"
+            checked={emergency}
+            onChange={(e) => setEmergency(e.target.checked)}
+            className="size-[18px]"
+          />
           <span className="text-[13px] font-bold">Megerősítem: vészhelyzeti üzemmód</span>
         </label>
         <button
@@ -1016,7 +1302,10 @@ function LogSection({
   return (
     <>
       <div className="mb-3.5 flex justify-end gap-2.5">
-        <button onClick={exportCsv} className="rounded-[10px] border border-[#E1EAEA] bg-white px-[15px] py-2 text-[13px] font-bold text-[#11302E]">
+        <button
+          onClick={exportCsv}
+          className="rounded-[10px] border border-[#E1EAEA] bg-white px-[15px] py-2 text-[13px] font-bold text-[#11302E]"
+        >
           ⬇ CSV export
         </button>
         <button
@@ -1037,10 +1326,15 @@ function LogSection({
 
       <div className="overflow-hidden rounded-[16px] border border-[#E1EAEA] bg-white">
         {log.length === 0 ? (
-          <div className="px-4 py-6 text-center text-[13px] text-[#11302E]/50">{state ? 'Nincs naplóbejegyzés.' : 'Betöltés…'}</div>
+          <div className="px-4 py-6 text-center text-[13px] text-[#11302E]/50">
+            {state ? 'Nincs naplóbejegyzés.' : 'Betöltés…'}
+          </div>
         ) : (
           log.map((l, i) => (
-            <div key={i} className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0">
+            <div
+              key={i}
+              className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0"
+            >
               <span className="mono w-[96px] flex-none text-[11px] text-[#11302E]/45">{fmtTs(l.ts)}</span>
               <span className="flex-1 text-[13px] font-semibold">{l.label ?? '—'}</span>
               <span className="text-[11px] text-[#11302E]/45">{l.who ?? ''}</span>
@@ -1051,7 +1345,12 @@ function LogSection({
                     body: `A(z) „${l.label ?? '—'}” művelet visszavonásra kerül és a pontok újraszámolódnak.`,
                     danger: true,
                     yes: 'Visszagörgetés',
-                    onYes: () => void write('log', { action: 'rollback', ts: l.ts }, `✓ Visszagörgetve — ${l.label ?? ''} · naplózva`)
+                    onYes: () =>
+                      void write(
+                        'log',
+                        { action: 'rollback', ts: l.ts },
+                        `✓ Visszagörgetve — ${l.label ?? ''} · naplózva`
+                      )
                   })
                 }
                 className="rounded-[9px] border border-[#cfe0de] bg-[#f6faf9] px-3 py-1.5 text-[12px] font-bold text-[#007E73]"
@@ -1063,7 +1362,8 @@ function LogSection({
         )}
       </div>
       <div className="mt-2.5 text-[12px] text-[#11302E]/50">
-        Csak prediktum-tipp tranzakciók görgethetők vissza; egyéb bejegyzéseknél a backend „nem visszafordítható” választ ad.
+        Csak prediktum-tipp tranzakciók görgethetők vissza; egyéb bejegyzéseknél a backend „nem
+        visszafordítható” választ ad.
       </div>
     </>
   )
@@ -1071,16 +1371,136 @@ function LogSection({
 
 // ── LEADS ───────────────────────────────────────────────────────────────────
 
-function Leads() {
+type LeadRow = {
+  id: string
+  name: string
+  contact: string
+  message: string
+  community: 'hu' | 'en'
+  ts: number
+  handled: boolean
+}
+
+function Leads({ token, showToast }: { token: string; showToast: (m: string) => void }) {
+  const [leads, setLeads] = useState<LeadRow[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function post(body: unknown): Promise<{ ok?: boolean; error?: string; leads?: LeadRow[] }> {
+    const res = await fetch('/api/admin/leads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify(body)
+    })
+    return (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as {
+      ok?: boolean
+      error?: string
+      leads?: LeadRow[]
+    }
+  }
+
+  async function load() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const json = await post({ action: 'list' })
+      if (json.ok) setLeads(json.leads ?? [])
+      else setErr(writeErrorMsg(json.error))
+    } catch {
+      setErr('Backend még nincs bekötve')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  async function toggle(lead: LeadRow) {
+    const json = await post({ action: 'setHandled', id: lead.id, handled: !lead.handled })
+    if (json.ok) {
+      await load()
+      showToast(lead.handled ? '✓ Érdeklődő újranyitva · naplózva' : '✓ Érdeklődő kezelve · naplózva')
+    } else {
+      showToast(writeErrorMsg(json.error))
+    }
+  }
+
+  const pending = leads.filter((l) => !l.handled).length
+
   return (
-    <div className="rounded-[16px] border border-[#E1EAEA] bg-white px-4 py-10 text-center">
-      <div className="text-[28px]">📨</div>
-      <div className="mt-2 text-[15px] font-black">Nincs érdeklődő</div>
-      <div className="mx-auto mt-1 max-w-[360px] text-[13px] text-[#11302E]/55">
-        A kapcsolati űrlap beérkező üzenetei itt jelennek meg. Ehhez a szekcióhoz még nincs adatforrás bekötve.
+    <div className="rounded-[16px] border border-[#E1EAEA] bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#EEF3F3] px-4 py-3">
+        <div>
+          <div className="text-xs font-black tracking-[0.08em] text-[#11302E]/55">BEÉRKEZŐ ÉRDEKLŐDŐK</div>
+          <div className="mt-0.5 text-[13px] text-[#11302E]/55">
+            {leads.length} összesen · {pending} nyitott
+          </div>
+        </div>
+        <button
+          onClick={() => void load()}
+          disabled={busy}
+          className="rounded-[10px] border border-[#E1EAEA] bg-white px-3.5 py-2 text-[12px] font-bold text-[#11302E] disabled:opacity-50"
+        >
+          ⟳ Frissítés
+        </button>
       </div>
+
+      {err ? (
+        <div className="px-4 py-6 text-center text-[13px] font-bold text-[#E5484D]">{err}</div>
+      ) : leads.length === 0 ? (
+        <div className="px-4 py-10 text-center">
+          <div className="text-[28px]">📨</div>
+          <div className="mt-2 text-[15px] font-black">{busy ? 'Betöltés…' : 'Nincs érdeklődő'}</div>
+          <div className="mx-auto mt-1 max-w-[360px] text-[13px] text-[#11302E]/55">
+            A landing érdeklődési űrlapjának beérkező üzenetei itt jelennek meg.
+          </div>
+        </div>
+      ) : (
+        leads.map((lead) => {
+          const href = contactHref(lead.contact)
+          const contact = href ? (
+            <a href={href} className="font-bold text-[#007E73] underline underline-offset-2">
+              {lead.contact}
+            </a>
+          ) : (
+            <span className="font-bold">{lead.contact}</span>
+          )
+          return (
+            <div
+              key={lead.id}
+              className={`flex flex-wrap items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0 ${lead.handled ? 'opacity-60' : ''}`}
+            >
+              <div className="min-w-[190px] flex-1">
+                <div className="text-[14px] font-black">{lead.name}</div>
+                <div className="mt-0.5 text-[12px] text-[#11302E]/55">
+                  {contact} · {lead.community.toUpperCase()} · {lead.ts ? fmtTs(lead.ts) : '—'}
+                </div>
+                {lead.message && <div className="mt-1 text-[13px] text-[#11302E]/70">{lead.message}</div>}
+              </div>
+              <button
+                onClick={() => void toggle(lead)}
+                className={
+                  lead.handled
+                    ? 'rounded-[9px] border border-[#c2e6cf] bg-[#e4f5ea] px-3.5 py-2 text-[12px] font-bold text-[#15803d]'
+                    : 'rounded-[9px] border border-[#E1EAEA] bg-white px-3.5 py-2 text-[12px] font-bold text-[#11302E]'
+                }
+              >
+                {lead.handled ? '✓ Kezelve' : 'Kezeltnek jelöl'}
+              </button>
+            </div>
+          )
+        })
+      )}
     </div>
   )
+}
+
+function contactHref(contact: string): string | null {
+  if (contact.includes('@')) return `mailto:${contact}`
+  const phone = contact.replace(/[^\d+]/g, '')
+  return phone.length >= 7 ? `tel:${phone}` : null
 }
 
 // ── BACKUP / RESTORE ────────────────────────────────────────────────────────
@@ -1110,7 +1530,9 @@ function Backup({
   const fileRef = useRef<HTMLInputElement>(null)
   const step = file ? 1 : 0
 
-  async function postBackup(body: unknown): Promise<{ ok?: boolean; error?: string; dryRun?: boolean; summary?: any; applied?: any }> {
+  async function postBackup(
+    body: unknown
+  ): Promise<{ ok?: boolean; error?: string; dryRun?: boolean; summary?: any; applied?: any }> {
     try {
       const res = await fetch('/api/admin/backup', {
         method: 'POST',
@@ -1151,7 +1573,9 @@ function Backup({
       const text = await f.text()
       const parsed = JSON.parse(text)
       // Accept either a raw RawState file or the route export wrapper ({ state }).
-      const data = (parsed && typeof parsed === 'object' && 'state' in parsed ? parsed.state : parsed) as RawStateFile
+      const data = (
+        parsed && typeof parsed === 'object' && 'state' in parsed ? parsed.state : parsed
+      ) as RawStateFile
       setFile({ name: f.name, size: f.size, data })
     } catch {
       showToast('Érvénytelen JSON fájl')
@@ -1171,8 +1595,14 @@ function Backup({
     }
     const s = dry.summary ?? {}
     const part = (label: string, v: any) =>
-      v && typeof v === 'object' ? `${label}: +${v.add ?? 0} új${v.change != null ? `, ${v.change} módosul` : ''}${v.overwrite != null ? `, ${v.overwrite} felülír` : ''} (${v.total ?? 0})` : null
-    const lines = [part('Tippek', s.predictions), part('Eredmények', s.results), part('Sorok', s.importedRows)].filter(Boolean)
+      v && typeof v === 'object'
+        ? `${label}: +${v.add ?? 0} új${v.change != null ? `, ${v.change} módosul` : ''}${v.overwrite != null ? `, ${v.overwrite} felülír` : ''} (${v.total ?? 0})`
+        : null
+    const lines = [
+      part('Tippek', s.predictions),
+      part('Eredmények', s.results),
+      part('Sorok', s.importedRows)
+    ].filter(Boolean)
     const body = lines.length
       ? `Próbafuttatás kész — a megerősítés után a mentés merge-upsert módon íródik be (semmi nem törlődik):\n\n${lines.join('\n')}`
       : 'A mentés nem tartalmaz visszaállítható adatot (tippek / eredmények / sorok).'
@@ -1197,7 +1627,11 @@ function Backup({
     <span
       key={n}
       className="rounded-[8px] px-[11px] py-1.5 text-[12px] font-extrabold"
-      style={on ? { background: '#E5484D', color: '#fff' } : { background: '#f1f5f5', color: 'rgba(17,48,46,.45)', fontWeight: 700 }}
+      style={
+        on
+          ? { background: '#E5484D', color: '#fff' }
+          : { background: '#f1f5f5', color: 'rgba(17,48,46,.45)', fontWeight: 700 }
+      }
     >
       {label}
     </span>
@@ -1206,7 +1640,9 @@ function Backup({
   return (
     <div className="max-w-[620px]">
       <div className="mb-4 rounded-[16px] border border-[#E1EAEA] bg-white p-[18px]">
-        <div className="mb-2 text-xs font-black tracking-[0.08em] text-[#11302E]/55">💾 BIZTONSÁGI MENTÉS</div>
+        <div className="mb-2 text-xs font-black tracking-[0.08em] text-[#11302E]/55">
+          💾 BIZTONSÁGI MENTÉS
+        </div>
         <div className="mb-3.5 text-[13px] text-[#11302E]/70">
           A teljes játékállapot exportja JSON-ként. Készíts mentést bármilyen kockázatos művelet előtt.
         </div>
@@ -1217,11 +1653,15 @@ function Backup({
         >
           ⬇ Állapot exportálása
         </button>
-        <div className="mono mt-2.5 text-[11px] text-[#11302E]/45">Az export az élő /api/state válaszból készül.</div>
+        <div className="mono mt-2.5 text-[11px] text-[#11302E]/45">
+          Az export az élő /api/state válaszból készül.
+        </div>
       </div>
 
       <div className="rounded-[16px] border border-[#f3d2cf] bg-white p-[18px]">
-        <div className="mb-2 text-xs font-black tracking-[0.08em] text-[#E5484D]">♻️ VISSZAÁLLÍTÁS — biztonságos folyamat</div>
+        <div className="mb-2 text-xs font-black tracking-[0.08em] text-[#E5484D]">
+          ♻️ VISSZAÁLLÍTÁS — biztonságos folyamat
+        </div>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {stepPill(1, '1 · Fájl', step >= 0)}
           <span className="text-[#11302E]/30">→</span>
@@ -1246,7 +1686,10 @@ function Backup({
         {step === 0 ? (
           <div className="rounded-[12px] border-2 border-dashed border-[#d3e6e4] p-6 text-center text-[13px] text-[#11302E]/60">
             JSON mentés kiválasztása:{' '}
-            <button onClick={() => fileRef.current?.click()} className="font-extrabold text-[#007E73] underline">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="font-extrabold text-[#007E73] underline"
+            >
               tallózás
             </button>
           </div>
@@ -1256,8 +1699,8 @@ function Backup({
               📄 {file?.name} · {file ? Math.max(1, Math.round(file.size / 1024)) : 0} KB
             </div>
             <div className="mb-3.5 text-[13px] text-[#11302E]/70">
-              A próbafuttatás összeveti a mentést az élő állapottal — semmi nem íródik felül, amíg meg nem erősíted. A
-              visszaállítás merge-upsert: csak hozzáad vagy felülír, sosem töröl (INV-11).
+              A próbafuttatás összeveti a mentést az élő állapottal — semmi nem íródik felül, amíg meg nem
+              erősíted. A visszaállítás merge-upsert: csak hozzáad vagy felülír, sosem töröl (INV-11).
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -1287,11 +1730,17 @@ function Backup({
 function Step({ value, set }: { value: number; set: (n: number) => void }) {
   return (
     <div className="flex items-center gap-1.5">
-      <button onClick={() => set(Math.max(0, value - 1))} className="size-[34px] rounded-[9px] border border-[#E1EAEA] bg-[#f6faf9] text-[16px] font-extrabold text-[#007E73]">
+      <button
+        onClick={() => set(Math.max(0, value - 1))}
+        className="size-[34px] rounded-[9px] border border-[#E1EAEA] bg-[#f6faf9] text-[16px] font-extrabold text-[#007E73]"
+      >
         −
       </button>
       <span className="tnum w-[34px] text-center text-[18px] font-black">{value}</span>
-      <button onClick={() => set(Math.min(20, value + 1))} className="size-[34px] rounded-[9px] border border-[#E1EAEA] bg-[#f6faf9] text-[16px] font-extrabold text-[#007E73]">
+      <button
+        onClick={() => set(Math.min(20, value + 1))}
+        className="size-[34px] rounded-[9px] border border-[#E1EAEA] bg-[#f6faf9] text-[16px] font-extrabold text-[#007E73]"
+      >
         +
       </button>
     </div>
@@ -1337,13 +1786,22 @@ function Diagnostics({ token }: { token: string }) {
     setRunning(true)
     setErr(null)
     try {
-      const res = await fetch('/api/admin/diagnostics', { headers: { 'x-admin-token': token }, cache: 'no-store' })
+      const res = await fetch('/api/admin/diagnostics', {
+        headers: { 'x-admin-token': token },
+        cache: 'no-store'
+      })
       const json = await res.json()
       if (json.checks) {
         setChecks(json.checks as DiagCheck[])
         setRanAt(json.ts ?? Date.now())
       } else {
-        setErr(json.error === 'admin-not-configured' ? 'ADMIN_TOKEN nincs beállítva' : json.error === 'unauthorized' ? 'Hibás token' : json.error ?? 'hiba')
+        setErr(
+          json.error === 'admin-not-configured'
+            ? 'ADMIN_TOKEN nincs beállítva'
+            : json.error === 'unauthorized'
+              ? 'Hibás token'
+              : (json.error ?? 'hiba')
+        )
       }
     } catch {
       setErr('network')
@@ -1358,8 +1816,8 @@ function Diagnostics({ token }: { token: string }) {
   return (
     <div className="animate-in">
       <div className="mb-4 rounded-[12px] border border-[#d3e6e4] bg-[#eef6f6] px-[15px] py-3 text-[13px] text-[#11302E]">
-        🔬 Önteszt — élőben futtatja a rendszer-ellenőrzéseket (adatbázis, írás-egészség,
-        adatintegritás, származtatott rangsorok, auth). Csak olvasás + egy eldobható szondasor; nem módosít adatot.
+        🔬 Önteszt — élőben futtatja a rendszer-ellenőrzéseket (adatbázis, írás-egészség, adatintegritás,
+        származtatott rangsorok, auth). Csak olvasás + egy eldobható szondasor; nem módosít adatot.
       </div>
 
       <button
@@ -1379,12 +1837,21 @@ function Diagnostics({ token }: { token: string }) {
             <span className="text-xs font-black tracking-[0.08em] text-[#11302E]/55">
               EREDMÉNY · {passCount}/{total} OK
             </span>
-            {ranAt && <span className="mono text-[11px] text-[#11302E]/50">{new Date(ranAt).toLocaleTimeString('hu')}</span>}
+            {ranAt && (
+              <span className="mono text-[11px] text-[#11302E]/50">
+                {new Date(ranAt).toLocaleTimeString('hu')}
+              </span>
+            )}
           </div>
           <div className="overflow-hidden rounded-[14px] border border-[#E1EAEA] bg-white">
             {checks.map((c) => (
-              <div key={c.name} className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0">
-                <span className="text-[16px]">{c.severity === 'pass' ? '✅' : c.severity === 'warn' ? '⚠️' : '❌'}</span>
+              <div
+                key={c.name}
+                className="flex items-center gap-3 border-b border-[#F1F5F5] px-4 py-3 last:border-b-0"
+              >
+                <span className="text-[16px]">
+                  {c.severity === 'pass' ? '✅' : c.severity === 'warn' ? '⚠️' : '❌'}
+                </span>
                 <div className="flex-1">
                   <div className="text-[13px] font-bold text-[#11302E]">{c.name}</div>
                   <div className="mono text-[11px] text-[#11302E]/55">{c.detail}</div>

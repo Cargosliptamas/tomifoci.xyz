@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSql } from '@/lib/db'
-import { adminGuard } from '@/lib/admin'
+import { adminGuard, logTxn } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     await sql`
       DELETE FROM imported_rows WHERE table_name = 'koTeams' AND convex_id = ${String(matchId)}
     `
+    await logTxn({
+      type: 'ko_team_clear',
+      label: `KO párosítás törölve: #${matchId}`,
+      path: 'koTeams',
+      before: { matchId },
+      after: null
+    })
     return NextResponse.json({ ok: true, cleared: true })
   }
 
@@ -47,5 +54,12 @@ export async function POST(request: Request) {
     VALUES ('koTeams', ${String(matchId)}, ${JSON.stringify(payload)}::jsonb)
     ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
   `
+  await logTxn({
+    type: 'ko_team_set',
+    label: `KO párosítás mentve: #${matchId} · ${home} – ${away}`,
+    path: 'koTeams',
+    before: null,
+    after: { matchId, ...payload }
+  })
   return NextResponse.json({ ok: true, matchId, home, away })
 }
