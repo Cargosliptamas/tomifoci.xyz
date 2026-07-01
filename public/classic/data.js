@@ -62,7 +62,7 @@ const STADIUMS = {
 const MATCHES = [
   // ── Tesztmérkőzések (noLock – mindig tippelhető) ─────────────
   // 🥚 Easter egg: teljes fiktív magyar kieséses menetrend – Labdabiztos.blog.hu Aréna
-  {id:1006,date:'2026-07-01T21:00',stage:'test',group:'–',label:'VB-R16',         home:'Magyarország',away:'Argentína',  venue:'Labdabiztos.blog.hu Aréna',noLock:true},
+  {id:1006,date:'2026-07-02T21:00',stage:'test',group:'–',label:'VB-R16',         home:'Magyarország',away:'Argentína',  venue:'Labdabiztos.blog.hu Aréna',noLock:true},
   {id:1005,date:'2026-07-10T21:00',stage:'test',group:'–',label:'VB-negyeddöntő', home:'Magyarország',away:'Brazília',   venue:'Labdabiztos.blog.hu Aréna',noLock:true},
   {id:1004,date:'2026-07-19T21:00',stage:'test',group:'–',label:'VB-elődöntő',    home:'Magyarország',away:'Olaszország',venue:'Labdabiztos.blog.hu Aréna',noLock:true},
   // ── Vb előtti barátságosok (forrás: fifaworldcupnews.com) ────────

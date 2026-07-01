@@ -159,7 +159,7 @@ export const FLAGS: Record<string, string> = {
 export const MATCHES: Fixture[] = [
   {
     "id": 1006,
-    "date": "2026-07-01T21:00",
+    "date": "2026-07-02T21:00",
     "stage": "test",
     "group": "–",
     "label": "VB-R16",
