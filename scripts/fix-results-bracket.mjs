@@ -4,8 +4,7 @@
 // What this does:
 //   1. Fix match 76 result (Netherlands 1-1 Morocco AET, stored wrong as 0:2)
 //   2. Add penalty results for match 75 (Germany 3-4 Paraguay) and 76 (Netherlands 2-3 Morocco)
-//   3. Clear phantom results for matches 77, 78, 80 (future matches not yet played)
-//   4. Seed R16 koTeams for match 89 (Kanada vs Brazília) and 90 (Paraguay vs Marokkó)
+//   3. Seed R16 koTeams for match 89 (Kanada vs Brazília) and 90 (Paraguay vs Marokkó)
 
 import { neon } from '@neondatabase/serverless'
 
@@ -42,21 +41,7 @@ async function main() {
   `
   console.log('✓ Match 75: h=1, a=1, pen_h=3, pen_a=4 (Paraguay wins on pens)\n')
 
-  // ── 3. Clear phantom results for future matches ─────────────────────────────
-  // Match 77: Elefántcsontpart vs Norvégia, kicks off 2026-06-30T19:00+02:00
-  // Match 78: Franciaország vs Svédország,  kicks off 2026-06-30T23:00+02:00
-  // Match 80: Anglia vs Kongói DK,          kicks off 2026-07-01T18:00+02:00
-  for (const matchId of [77, 78, 80]) {
-    const before = await currentResult(matchId)
-    if (before) {
-      await sql`DELETE FROM results WHERE match_id = ${matchId}`
-      console.log(`✓ Match ${matchId}: cleared phantom result ${before.h}:${before.a}`)
-    } else {
-      console.log(`  Match ${matchId}: no phantom result found`)
-    }
-  }
-
-  // ── 4. Seed R16 koTeams ─────────────────────────────────────────────────────
+  // ── 3. Seed R16 koTeams ─────────────────────────────────────────────────────
   // Match 89 (2026-07-04T19:00): Winner M73 (Kanada) vs Winner M74 (Brazília)
   // Match 90 (2026-07-04T23:00): Winner M75 (Paraguay) vs Winner M76 (Marokkó)
   const r16 = [
