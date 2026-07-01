@@ -9,6 +9,7 @@ import { flag, stadiumOf, MATCHES, type Fixture } from '@/lib/fixtures'
 import { countdown, kickoffMs, liveScoreFor, oddsFor, resultFor, statusOf, teamsOf } from '@/lib/derive'
 
 const CARD_EVENT_TYPES = new Set(['goal', 'goal_penalty', 'own_goal', 'yellow', 'red', 'yellow_red'])
+const FINISHED_PAGE_SIZE = 20
 const CARD_ICON: Record<string, string> = {
   goal: '⚽',
   goal_penalty: '⚽',
@@ -57,6 +58,7 @@ function badgeOf(f: Fixture): string {
 
 export default function MeccsCenterPage() {
   const { state, status } = useGame()
+  const [finishedLimit, setFinishedLimit] = useState(FINISHED_PAGE_SIZE)
 
   const buckets = useMemo(() => {
     const now = Date.now()
@@ -93,6 +95,8 @@ export default function MeccsCenterPage() {
     !buckets.finished.length &&
     !buckets.today.length &&
     !buckets.upcoming.length
+  const visibleFinished = buckets.finished.slice(0, finishedLimit)
+  const hiddenFinished = Math.max(0, buckets.finished.length - visibleFinished.length)
 
   return (
     <>
@@ -126,16 +130,25 @@ export default function MeccsCenterPage() {
         )}
 
         {/* 🏁 LEGFRISSEBB EREDMÉNYEK — full-width hero for the newest, 2-col for the rest */}
-        {buckets.finished.length > 0 && (
+        {visibleFinished.length > 0 && (
           <Section>
             <Header>🏁 LEGFRISSEBB EREDMÉNYEK</Header>
-            <FinishedCard fixture={buckets.finished[0]} />
-            {buckets.finished.length > 1 && (
+            <FinishedCard fixture={visibleFinished[0]} />
+            {visibleFinished.length > 1 && (
               <div className="grid gap-2 sm:grid-cols-2">
-                {buckets.finished.slice(1).map((f) => (
+                {visibleFinished.slice(1).map((f) => (
                   <UpcomingCard key={f.id} fixture={f} />
                 ))}
               </div>
+            )}
+            {hiddenFinished > 0 && (
+              <button
+                type="button"
+                onClick={() => setFinishedLimit((value) => value + FINISHED_PAGE_SIZE)}
+                className="tap mt-3 w-full rounded-[14px] border border-[#DCEFEE] bg-white px-4 py-[11px] text-[13px] font-black text-[#007E73] hover:border-[#9fd8d2]"
+              >
+                Korábbi eredmények +{Math.min(FINISHED_PAGE_SIZE, hiddenFinished)}
+              </button>
             )}
           </Section>
         )}

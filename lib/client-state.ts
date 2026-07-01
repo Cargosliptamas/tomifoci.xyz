@@ -3,6 +3,8 @@ import { computeAllScores, computeRankings } from './engine/scoring'
 import { computeWizardScores, computeWizardRankings, repairOdds, pickFromScore } from './engine/wizard'
 import { computeSwiss } from './engine/swiss'
 import { SWISS_ROUNDS } from './engine/match-meta'
+import { MATCH_BY_ID, MATCHES } from './fixtures'
+import { isFinalLiveStatus } from './live-status'
 import { normalizeMatchCentre } from './match-events'
 import type {
   Bonus,
@@ -21,9 +23,11 @@ import type {
 
 type Row = Record<string, any>
 type Tables = Record<string, Row[] | undefined>
+const INITIAL_MATCH_CENTRE_LIMIT = 20
 
 export type PublicStateOptions = {
   community?: string
+  now?: number
 }
 
 export { encodeClientKey }
@@ -31,10 +35,13 @@ export { encodeClientKey }
 export function buildPublicState(tables: Tables, options: PublicStateOptions = {}) {
   const community = options.community ?? 'hu'
   const isEnglish = community === 'en'
+  const now = options.now ?? Date.now()
+  const effectiveTables = withFinalLiveResults(tables)
+  const initialMatchCentreIds = initialMatchCentreMatchIds(now)
   const settingsRow = first(tables.settings) ?? { leagues: ['Alapliga'], players: [] }
-  const derived = computeDerivedRows(tables)
-  const scoreRows = derived.playerScores.length ? derived.playerScores : tables.playerScores
-  const rankingRows = derived.rankings.length ? derived.rankings : tables.rankings
+  const derived = computeDerivedRows(effectiveTables)
+  const scoreRows = derived.playerScores.length ? derived.playerScores : effectiveTables.playerScores
+  const rankingRows = derived.rankings.length ? derived.rankings : effectiveTables.rankings
   const {
     enPlayers: _enPlayers,
     ls2Key: _ls2Key,
@@ -58,9 +65,10 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
     Array<{ minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }>
   > = {}
   const matchScores: Record<string, { ht?: { h: number; a: number } }> = {}
-  for (const row of tables.apiCache ?? []) {
+  for (const row of effectiveTables.apiCache ?? []) {
     if (typeof row.kind === 'string' && row.kind.startsWith('events_')) {
       const matchId = row.kind.slice('events_'.length)
+      if (!initialMatchCentreIds.has(Number(matchId))) continue
       const centre = normalizeMatchCentre(row.data)
       if (centre.events.length > 0) {
         matchEvents[matchId] = centre.events
@@ -73,16 +81,16 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
 
   return {
     settings,
-    predictions: groupRows(tables.predictions, community, (row) => [
+    predictions: groupRows(effectiveTables.predictions, community, (row) => [
       row.player,
       row.matchId,
       { h: row.h, a: row.a }
     ]),
-    results: mapRows(tables.results, (row) => [
+    results: mapRows(effectiveTables.results, (row) => [
       row.matchId,
       withDefined({ h: row.h, a: row.a, pen_h: row.pen_h, pen_a: row.pen_a })
     ]),
-    koTeams: mapRows(tables.koTeams, (row) => [
+    koTeams: mapRows(effectiveTables.koTeams, (row) => [
       row.matchId,
       withDefined({
         home: row.home,
@@ -92,11 +100,11 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
         autoNote: row.autoNote
       })
     ]),
-    bonuses: groupListRows(tables.bonuses, community, (row) => [
+    bonuses: groupListRows(effectiveTables.bonuses, community, (row) => [
       row.player,
       { pts: row.pts, reason: row.reason }
     ]),
-    favorites: mapCommunityRows(tables.favorites, community, (row) => [
+    favorites: mapCommunityRows(effectiveTables.favorites, community, (row) => [
       row.player,
       {
         team: row.team,
@@ -105,11 +113,14 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
         pendingKO: row.pendingKO ?? false
       }
     ]),
-    _txnlog: mapRows(tables.txnlog, (row) => [
+    _txnlog: mapRows(effectiveTables.txnlog, (row) => [
       row._id ?? `${row.ts}:${row.label}`,
       pick(row, ['ts', 'who', 'type', 'label', 'path'])
     ]),
-    apiCache: mapRows(tables.apiCache, (row) => [row.kind, { ts: row.ts, data: row.data }]),
+    apiCache: mapRows(publicApiCacheRows(effectiveTables.apiCache), (row) => [
+      row.kind,
+      { ts: row.ts, data: row.data }
+    ]),
     scores: mapCommunityRows(scoreRows, community, (row) => [
       row.player,
       pick(row, [
@@ -126,30 +137,30 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
       ])
     ]),
     rankings: rankingsForCommunity(rankingRows, isEnglish),
-    wizardPicks: groupRows(tables.wizardPicks, 'hu', (row) => [
+    wizardPicks: groupRows(effectiveTables.wizardPicks, 'hu', (row) => [
       row.player,
       row.matchId,
       { pick: row.pick, oddsAtPick: row.oddsAtPick }
     ]),
-    wizardProfiles: mapEncodedRows(tables.wizardProfiles, (row) => [
+    wizardProfiles: mapEncodedRows(effectiveTables.wizardProfiles, (row) => [
       row.player,
       { active: row.active, mirror: row.mirror }
     ]),
-    wizardRankings: computeLiveWizardRankings(tables),
+    wizardRankings: computeLiveWizardRankings(effectiveTables),
     swissProfiles: isEnglish
       ? []
-      : (tables.swissProfiles ?? []).map((row) =>
+      : (effectiveTables.swissProfiles ?? []).map((row) =>
           pick(row, ['player', 'active', 'joinedRound', 'removedAtRound'])
         ),
     swissPairings: isEnglish
       ? []
-      : (tables.swissPairings ?? []).map((row) =>
+      : (effectiveTables.swissPairings ?? []).map((row) =>
           pick(row, ['round', 'a', 'b', 'tier', 'slot', 'publishedBy'])
         ),
-    swiss: isEnglish ? null : computeLiveSwiss(tables),
+    swiss: isEnglish ? null : computeLiveSwiss(effectiveTables),
     swissLog: isEnglish
       ? []
-      : (tables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note'])),
+      : (effectiveTables.swissLog ?? []).map((row) => pick(row, ['ts', 'who', 'action', 'rounds', 'note'])),
     matchEvents,
     matchScores
   }
@@ -430,6 +441,42 @@ function mapResults(tables: Tables): Result[] {
 
 function first(rows: Row[] | undefined) {
   return rows?.[0]
+}
+
+function withFinalLiveResults(tables: Tables): Tables {
+  const liveRow = (tables.apiCache ?? []).find((row) => row.kind === 'live')
+  const liveData = liveRow?.data
+  if (!liveData || typeof liveData !== 'object') return tables
+
+  const existingIds = new Set((tables.results ?? []).map((row) => String(row.matchId)))
+  const fallbackResults: Row[] = []
+  for (const [matchId, raw] of Object.entries(liveData as Record<string, any>)) {
+    if (existingIds.has(matchId) || !isFinalLiveStatus(raw?.status)) continue
+    if (MATCH_BY_ID[Number(matchId)]?.stage === 'ko') continue
+    const h = Number(raw?.h)
+    const a = Number(raw?.a)
+    if (!Number.isInteger(h) || !Number.isInteger(a)) continue
+    fallbackResults.push({ matchId: Number(matchId), h, a })
+  }
+  if (!fallbackResults.length) return tables
+
+  return { ...tables, results: [...(tables.results ?? []), ...fallbackResults] }
+}
+
+function publicApiCacheRows(rows: Row[] | undefined) {
+  return (rows ?? []).filter(
+    (row) => row.kind === 'odds' || row.kind === 'live' || row.kind === 'kickoffOdds'
+  )
+}
+
+function initialMatchCentreMatchIds(now: number) {
+  return new Set(
+    MATCHES.map((fixture) => ({ id: fixture.id, kickoff: new Date(fixture.date).getTime() }))
+      .filter((fixture) => Number.isFinite(fixture.kickoff) && fixture.kickoff <= now)
+      .sort((a, b) => b.kickoff - a.kickoff)
+      .slice(0, INITIAL_MATCH_CENTRE_LIMIT)
+      .map((fixture) => fixture.id)
+  )
 }
 
 function communityOf(row: Row) {

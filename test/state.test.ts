@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { buildPublicState, encodeClientKey } from '../lib/client-state'
 import { SWISS_ROUNDS } from '../lib/engine/match-meta'
 
+const JULY_1_2026 = new Date('2026-07-01T20:00:00+02:00').getTime()
+
 // INV-09: secrets must never appear in the public game:state payload.
 describe('buildPublicState — secret stripping (INV-09)', () => {
   const tables = {
@@ -22,7 +24,7 @@ describe('buildPublicState — secret stripping (INV-09)', () => {
   }
 
   it('omits ls2Key / ls2Secret / adminTotp / enPlayers', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
     const blob = JSON.stringify(state)
     expect(blob).not.toContain('SECRET_KEY')
     expect(blob).not.toContain('SECRET_SECRET')
@@ -34,12 +36,12 @@ describe('buildPublicState — secret stripping (INV-09)', () => {
   })
 
   it('exposes a hasLsKey boolean instead of the raw key', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
     expect(state.settings).toHaveProperty('hasLsKey', true)
   })
 
   it('returns the expected top-level shape', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
     for (const key of [
       'settings',
       'predictions',
@@ -83,7 +85,7 @@ describe('buildPublicState — score + ranking via the engine (C1)', () => {
   }
 
   it('doubles favourite match points and ranks players by points', () => {
-    const state = buildPublicState(tables, { community: 'hu' })
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
     const board = state.rankings[encodeClientKey('all_Mindenki')] as Array<{
       name: string
       pts: number
@@ -95,6 +97,61 @@ describe('buildPublicState — score + ranking via the engine (C1)', () => {
     expect(board[0]).toMatchObject({ name: 'Anna', pts: 15, exact: 2, counted: 2 })
     // Bela: predicted 0-0 vs 2-0 → wrong outcome → 0 pts, 1 counted.
     expect(board[1]).toMatchObject({ name: 'Bela', pts: 0, counted: 1 })
+  })
+
+  it('scores rankings from a final live cache row when the result row is missing', () => {
+    const state = buildPublicState(
+      {
+        settings: [
+          {
+            leagues: ['Mindenki'],
+            players: [
+              { name: 'Anna', leagues: ['Mindenki'] },
+              { name: 'Bela', leagues: ['Mindenki'] }
+            ]
+          }
+        ],
+        predictions: [
+          { player: 'Anna', matchId: 1, h: 2, a: 0, community: 'hu' },
+          { player: 'Bela', matchId: 1, h: 0, a: 0, community: 'hu' }
+        ],
+        results: [],
+        apiCache: [
+          {
+            kind: 'live',
+            ts: 456,
+            data: { '1': { h: 2, a: 0, status: 'FINISHED', elapsed: 'FT' } }
+          }
+        ]
+      },
+      { community: 'hu' }
+    )
+
+    const board = state.rankings[encodeClientKey('all_Mindenki')] as Array<{ name: string; pts: number }>
+    expect(state.results['1']).toEqual({ h: 2, a: 0 })
+    expect(board[0]).toMatchObject({ name: 'Anna', pts: 5 })
+    expect(board[1]).toMatchObject({ name: 'Bela', pts: 0 })
+  })
+
+  it('does not synthesize KO scoring results from final live cache rows', () => {
+    const state = buildPublicState(
+      {
+        settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna', leagues: ['Mindenki'] }] }],
+        predictions: [{ player: 'Anna', matchId: 80, h: 2, a: 1, community: 'hu' }],
+        results: [],
+        apiCache: [
+          {
+            kind: 'live',
+            ts: 456,
+            data: { '80': { h: 2, a: 1, status: 'FINISHED', elapsed: 'FT' } }
+          }
+        ]
+      },
+      { community: 'hu', now: JULY_1_2026 }
+    )
+
+    expect(state.results['80']).toBeUndefined()
+    expect((state.scores[encodeClientKey('Anna')] as { pts: number }).pts).toBe(0)
   })
 
   it('emits no standalone test leaderboard (4 hu scopes × 1 league)', () => {
@@ -109,10 +166,10 @@ describe('buildPublicState — match centre events from apiCache', () => {
     const tables = {
       settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
       predictions: [],
-      results: [{ matchId: 1, h: 2, a: 1 }],
+      results: [{ matchId: 80, h: 2, a: 1 }],
       apiCache: [
         {
-          kind: 'events_1',
+          kind: 'events_80',
           ts: 123,
           data: {
             events: [
@@ -126,29 +183,82 @@ describe('buildPublicState — match centre events from apiCache', () => {
       ]
     }
 
-    const state = buildPublicState(tables, { community: 'hu' })
-    expect(state.matchEvents?.['1']).toEqual(tables.apiCache[0].data.events)
-    expect(state.matchScores?.['1']).toEqual({ ht: { h: 1, a: 0 } })
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
+    expect(state.matchEvents?.['80']).toEqual(tables.apiCache[0].data.events)
+    expect(state.matchScores?.['80']).toEqual({ ht: { h: 1, a: 0 } })
     // Scoring still comes only from result truth; events do not add points.
     expect((state.scores[encodeClientKey('Anna')] as { pts: number }).pts).toBe(0)
+  })
+
+  it('does not expose raw per-match event cache rows through apiCache', () => {
+    const tables = {
+      settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
+      predictions: [],
+      results: [{ matchId: 80, h: 2, a: 1 }],
+      apiCache: [
+        {
+          kind: 'events_80',
+          ts: 123,
+          data: {
+            events: [{ minute: '12', type: 'goal', player: 'Scorer', team: 'h' }],
+            htScore: { h: 1, a: 0 }
+          }
+        },
+        {
+          kind: 'live',
+          ts: 456,
+          data: { '1': { h: 2, a: 1, status: 'FT' } }
+        },
+        {
+          kind: 'odds',
+          ts: 789,
+          data: { '1': { h: 1.8, x: 3.5, a: 4.2 } }
+        }
+      ]
+    }
+
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
+    expect(state.apiCache.events_80).toBeUndefined()
+    expect(state.apiCache.live).toEqual({ ts: 456, data: tables.apiCache[1].data })
+    expect(state.apiCache.odds).toEqual({ ts: 789, data: tables.apiCache[2].data })
+    expect(state.matchEvents?.['80']).toEqual(tables.apiCache[0].data.events)
+    expect(state.matchScores?.['80']).toEqual({ ht: { h: 1, a: 0 } })
   })
 
   it('exposes legacy array-shaped cached events after normalization', () => {
     const tables = {
       settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
       predictions: [],
-      results: [{ matchId: 1, h: 2, a: 1 }],
+      results: [{ matchId: 80, h: 2, a: 1 }],
       apiCache: [
         {
-          kind: 'events_1',
+          kind: 'events_80',
           ts: 123,
           data: [{ icon: '⚽', side: 'away', time: '12', player: 'Scorer' }]
         }
       ]
     }
 
-    const state = buildPublicState(tables, { community: 'hu' })
-    expect(state.matchEvents?.['1']).toEqual([{ minute: '12', type: 'goal', player: 'Scorer', team: 'a' }])
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
+    expect(state.matchEvents?.['80']).toEqual([{ minute: '12', type: 'goal', player: 'Scorer', team: 'a' }])
+  })
+
+  it('omits old match-centre events from the initial state payload', () => {
+    const tables = {
+      settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
+      predictions: [],
+      results: [{ matchId: 1, h: 2, a: 0 }],
+      apiCache: [
+        {
+          kind: 'events_1',
+          ts: 123,
+          data: { events: [{ minute: '12', type: 'goal', player: 'Scorer', team: 'h' }] }
+        }
+      ]
+    }
+
+    const state = buildPublicState(tables, { community: 'hu', now: JULY_1_2026 })
+    expect(state.matchEvents?.['1']).toBeUndefined()
   })
 })
 

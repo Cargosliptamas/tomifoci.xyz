@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm'
 import { getSql, upsertImportedRow } from './db'
 import { MATCH_BY_ID, stadiumOf } from './fixtures'
 import { isKickedOff } from './engine/match-meta'
+import { isFinalLiveStatus } from './live-status'
 import { mergeMatchCentreCache, normalizeMatchCentre } from './match-events'
 
 // LiveScore-API ingestion. Pulls pre-match odds + final scores and maps them to our match
@@ -179,28 +180,28 @@ function recentHistoryParams(now = new Date()): { from: string; to: string } {
 }
 
 export function matchResultScore(m: any): { h: number; a: number } | null {
-  return (
+  const regularScore =
+    parseScore(m?.regular_score) ||
+    parseScore(m?.regular_time_score) ||
+    parseScore(m?.normal_time_score) ||
+    parseScore(m?.scores?.regular_score) ||
+    parseScore(m?.scores?.regular_time_score) ||
+    parseScore(m?.scores?.normal_time_score) ||
     parseScore(m?.ft_score) ||
     parseScore(m?.scores?.ft_score) ||
     parseScore(m?.scores?.ft) ||
     parseScore(m?.scores?.full_time) ||
-    parseScore(m?.scores?.fulltime) ||
-    parseScore(m?.score) ||
-    parseScore(m?.scores?.score)
-  )
+    parseScore(m?.scores?.fulltime)
+
+  if (regularScore) return regularScore
+  if (matchPenaltyScore(m)) return null
+  return parseScore(m?.score) || parseScore(m?.scores?.score)
 }
 
-function matchPenaltyScore(m: any): { h: number; a: number } | null {
+export function matchPenaltyScore(m: any): { h: number; a: number } | null {
   return parseScore(
     m?.pen_score || m?.penalty_score || m?.penalties || m?.scores?.pen_score || m?.scores?.penalty_score
   )
-}
-
-export function isFinalLiveStatus(status: unknown): boolean {
-  const value = String(status ?? '')
-    .trim()
-    .toUpperCase()
-  return value === 'FT' || value === 'FINISHED' || value === 'FULL TIME' || value === 'FULLTIME'
 }
 
 function loadDataFixtures(): Array<{ id: number; home: string; away: string; stage: string }> {

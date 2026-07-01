@@ -31,16 +31,16 @@ async function main() {
   `
   console.log('✓ Match 76: h=1, a=1, pen_h=2, pen_a=3 (Morocco wins on pens)\n')
 
-  // ── 2. Add penalty result for match 75 (FT already correct at 1:1) ─────────
+  // ── 2. Set match 75 scoring result + penalty result ───────────────────────
   // Actual: Germany 1-1 Paraguay AET; Paraguay wins 4-3 on penalties
   const r75before = await currentResult(75)
   console.log(`Match 75 before: ${JSON.stringify(r75before)}`)
   await sql`
     INSERT INTO results (match_id, h, a, pen_h, pen_a)
     VALUES (75, 1, 1, 3, 4)
-    ON CONFLICT (match_id) DO UPDATE SET pen_h = 3, pen_a = 4
+    ON CONFLICT (match_id) DO UPDATE SET h = 1, a = 1, pen_h = 3, pen_a = 4
   `
-  console.log('✓ Match 75: pen_h=3, pen_a=4 (Paraguay wins on pens)\n')
+  console.log('✓ Match 75: h=1, a=1, pen_h=3, pen_a=4 (Paraguay wins on pens)\n')
 
   // ── 3. Clear phantom results for future matches ─────────────────────────────
   // Match 77: Elefántcsontpart vs Norvégia, kicks off 2026-06-30T19:00+02:00
@@ -60,8 +60,8 @@ async function main() {
   // Match 89 (2026-07-04T19:00): Winner M73 (Kanada) vs Winner M74 (Brazília)
   // Match 90 (2026-07-04T23:00): Winner M75 (Paraguay) vs Winner M76 (Marokkó)
   const r16 = [
-    { id: '89', home: 'Kanada',   away: 'Brazília', note: 'Winner M73 vs Winner M74' },
-    { id: '90', home: 'Paraguay', away: 'Marokkó',  note: 'Winner M75 vs Winner M76' },
+    { id: '89', home: 'Kanada', away: 'Brazília', note: 'Winner M73 vs Winner M74' },
+    { id: '90', home: 'Paraguay', away: 'Marokkó', note: 'Winner M75 vs Winner M76' }
   ]
   console.log()
   for (const m of r16) {
