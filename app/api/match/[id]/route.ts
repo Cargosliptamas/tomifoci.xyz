@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSql, upsertImportedRow } from '@/lib/db'
 import { fetchMatchCentre } from '@/lib/livescore'
+import { mergeMatchCentreCache } from '@/lib/match-events'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -19,22 +20,7 @@ export const maxDuration = 30
 // can't be resolved — never an error the modal has to handle.
 const TTL_MS = 60_000
 
-export function mergeMatchCentreCache(cached: any, fresh: any) {
-  const cachedData = cached && typeof cached === 'object' ? cached : {}
-  const freshData = fresh && typeof fresh === 'object' ? fresh : {}
-  const cachedEvents = Array.isArray(cachedData.events) ? cachedData.events : []
-  const freshEvents = Array.isArray(freshData.events) ? freshData.events : []
-  return {
-    ...cachedData,
-    ...freshData,
-    events: freshEvents.length > 0 ? freshEvents : cachedEvents,
-    lineups: freshData.lineups ?? cachedData.lineups ?? null,
-    odds: freshData.odds ?? cachedData.odds ?? null,
-    status: freshData.status || cachedData.status || '',
-    venue: freshData.venue ?? cachedData.venue ?? null,
-    htScore: freshData.htScore ?? cachedData.htScore ?? null
-  }
-}
+export { mergeMatchCentreCache }
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
@@ -54,7 +40,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     `
     const cached = (rows as Array<{ payload: any }>)[0]?.payload
     if (cached?.data && typeof cached.ts === 'number' && Date.now() - cached.ts < TTL_MS) {
-      return NextResponse.json({ ok: true, ...cached.data, cached: true })
+      return NextResponse.json({ ok: true, ...mergeMatchCentreCache(cached.data, {}), cached: true })
     }
 
     const data = await fetchMatchCentre(matchId)

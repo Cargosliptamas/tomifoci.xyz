@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { flag, stadiumOf, type Fixture } from '@/lib/fixtures'
 import { useGame } from '@/components/game-provider'
 import { encodeClientKey } from '@/lib/keys'
-import { myPrediction, myWizard, oddsFor, resultFor, teamsOf } from '@/lib/derive'
+import { myPrediction, myWizard, oddsFor, resultFor, teamsOf, wizardGainFor } from '@/lib/derive'
 
 type MatchEvent = { minute: string; type: string; player: string; sub?: string; team: 'h' | 'a' }
 type LineupPlayer = { num: string; name: string }
@@ -29,9 +29,26 @@ const EVENT_ICON: Record<string, string> = {
   sub: '🔄',
   missed_penalty: '✗'
 }
-const EVENT_SUFFIX: Record<string, string> = { goal_penalty: ' (11m)', own_goal: ' (ög)', missed_penalty: ' (11m)' }
+const EVENT_SUFFIX: Record<string, string> = {
+  goal_penalty: ' (11m)',
+  own_goal: ' (ög)',
+  missed_penalty: ' (11m)'
+}
 
-const MONTHS = ['jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.', 'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.']
+const MONTHS = [
+  'jan.',
+  'febr.',
+  'márc.',
+  'ápr.',
+  'máj.',
+  'jún.',
+  'júl.',
+  'aug.',
+  'szept.',
+  'okt.',
+  'nov.',
+  'dec.'
+]
 
 function formatKickoff(dateStr: string): string {
   const d = new Date(dateStr)
@@ -41,7 +58,15 @@ function formatKickoff(dateStr: string): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}. ${hh}:${mm}`
 }
 
-export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live: boolean; onClose: () => void }) {
+export function MatchModal({
+  fixture,
+  live,
+  onClose
+}: {
+  fixture: Fixture
+  live: boolean
+  onClose: () => void
+}) {
   const { state, session } = useGame()
   const me = session?.player ?? ''
   const [tab, setTab] = useState<'sum' | 'ev' | 'lu' | 'odds'>('sum')
@@ -62,7 +87,7 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
           odds: json.odds ?? null,
           status: json.status ?? '',
           venue: json.venue ?? null,
-          htScore: json.htScore ?? null,
+          htScore: json.htScore ?? null
         })
       })
       .catch(() => {
@@ -79,6 +104,7 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
   const result = resultFor(state, fixture.id)
   const pred = me ? myPrediction(state, me, fixture.id) : null
   const wiz = me ? myWizard(state, me, fixture.id) : null
+  const wizardGain = me ? wizardGainFor(state, me, fixture.id) : null
   const odds = oddsFor(state, fixture.id)
   const earned = me ? state?.scores?.[encodeClientKey(me)]?.byMatch?.[String(fixture.id)] : undefined
   const { home, away } = teamsOf(state, fixture)
@@ -87,13 +113,7 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
   const effectiveOdds = mc?.odds ?? (odds ? { h: odds[0], x: odds[1], a: odds[2] } : null)
 
   // Status badge text
-  const statusBadge = mc?.status
-    ? mc.status.toUpperCase()
-    : live
-    ? 'ÉLŐ'
-    : result
-    ? 'VÉGE'
-    : ''
+  const statusBadge = mc?.status ? mc.status.toUpperCase() : live ? 'ÉLŐ' : result ? 'VÉGE' : ''
 
   // Venue display: modal fetch result → fixture STADIUMS map → raw venue field
   const venueDisplay = mc?.venue || stadiumOf(fixture.venue) || fixture.venue || ''
@@ -113,7 +133,11 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
       >
         <div
           className="relative px-[18px] pb-[18px] pt-4 text-white"
-          style={{ background: live ? 'linear-gradient(160deg,#0C4D49,#0F6A64)' : 'linear-gradient(160deg,#073B43,#0B5560)' }}
+          style={{
+            background: live
+              ? 'linear-gradient(160deg,#0C4D49,#0F6A64)'
+              : 'linear-gradient(160deg,#073B43,#0B5560)'
+          }}
         >
           <button
             onClick={onClose}
@@ -122,7 +146,9 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
             ✕
           </button>
           <div className="text-[11px] font-extrabold tracking-[0.06em]" style={{ color: '#9fe6dd' }}>
-            {fixture.group && fixture.group !== '–' ? `${fixture.group.toUpperCase()} CSOPORT` : (fixture.label ?? 'MECCS')}
+            {fixture.group && fixture.group !== '–'
+              ? `${fixture.group.toUpperCase()} CSOPORT`
+              : (fixture.label ?? 'MECCS')}
             {statusBadge ? ` · ${statusBadge}` : ''}
           </div>
           <div className="my-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
@@ -148,19 +174,19 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
             </div>
           </div>
           {venueDisplay && (
-            <div className="mt-1 text-center text-[10px] font-semibold opacity-60">
-              📍 {venueDisplay}
-            </div>
+            <div className="mt-1 text-center text-[10px] font-semibold opacity-60">📍 {venueDisplay}</div>
           )}
         </div>
 
         <div className="flex gap-1.5 border-b border-[#EBF6F5] px-4 py-3">
-          {([
-            ['sum', 'Összefoglaló'],
-            ['ev', 'Események'],
-            ['lu', 'Felállás'],
-            ['odds', 'Odds']
-          ] as const).map(([id, label]) => (
+          {(
+            [
+              ['sum', 'Összefoglaló'],
+              ['ev', 'Események'],
+              ['lu', 'Felállás'],
+              ['odds', 'Odds']
+            ] as const
+          ).map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -176,26 +202,39 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
         <div className="px-4 pb-7 pt-3">
           {tab === 'sum' && (
             <div className="space-y-2">
-              <SumRow label="🎯 Eredmény-tipped" value={pred ? `${pred.h}:${pred.a}` : 'nincs tipp'} bold={earned ? `${earned.pts} pt` : undefined} />
-              <SumRow label="🪄 Wizard tipped" value={wiz?.pick ?? 'nincs'} bold={wiz?.oddsAtPick ? wiz.oddsAtPick.toFixed(2) : undefined} />
+              <SumRow
+                label="🎯 Eredmény-tipped"
+                value={pred ? `${pred.h}:${pred.a}` : 'nincs tipp'}
+                bold={earned ? `${earned.pts} pt` : undefined}
+              />
+              <SumRow
+                label="🪄 Wizard tipped"
+                value={wiz?.pick ?? 'nincs'}
+                bold={
+                  wizardGain != null
+                    ? result
+                      ? `+${wizardGain.toFixed(2)}`
+                      : wizardGain.toFixed(2)
+                    : undefined
+                }
+              />
               <SumRow label="♟ Svájci" value="a kör párbajában számít" />
               <SumRow label="🕘 Kezdés" value={formatKickoff(fixture.date)} />
               {venueDisplay && <SumRow label="📍 Helyszín" value={venueDisplay} />}
             </div>
           )}
 
-          {tab === 'ev' && (
-            mcLoading ? (
+          {tab === 'ev' &&
+            (mcLoading ? (
               <Loading />
             ) : mc && mc.events.length > 0 ? (
               <EventsList events={mc.events} htScore={mc.htScore} />
             ) : (
               <Empty>Még nincs élő esemény</Empty>
-            )
-          )}
+            ))}
 
-          {tab === 'lu' && (
-            mcLoading ? (
+          {tab === 'lu' &&
+            (mcLoading ? (
               <Loading />
             ) : mc?.lineups && (mc.lineups.home.length > 0 || mc.lineups.away.length > 0) ? (
               <div className="grid grid-cols-2 gap-3 text-[12px]">
@@ -204,8 +243,7 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
               </div>
             ) : (
               <Empty>Még nincs felállás</Empty>
-            )
-          )}
+            ))}
 
           {tab === 'odds' && (
             <>
@@ -215,7 +253,9 @@ export function MatchModal({ fixture, live, onClose }: { fixture: Fixture; live:
                   return (
                     <div key={label} className="rounded-[12px] bg-[#EBF6F5] px-1 py-[14px] text-center">
                       <div className="text-[11px] font-black text-[#0D3331]/50">{label}</div>
-                      <div className="tnum mt-[3px] text-[18px] font-black text-[#007E73]">{val ? val.toFixed(2) : '—'}</div>
+                      <div className="tnum mt-[3px] text-[18px] font-black text-[#007E73]">
+                        {val ? val.toFixed(2) : '—'}
+                      </div>
                     </div>
                   )
                 })}
@@ -246,7 +286,9 @@ function EventsList({ events, htScore }: { events: MatchEvent[]; htScore: { h: n
 
   return (
     <div className="space-y-1.5">
-      {firstHalf.map((e, i) => <EventRow key={`h1-${i}`} event={e} />)}
+      {firstHalf.map((e, i) => (
+        <EventRow key={`h1-${i}`} event={e} />
+      ))}
       {/* Half-time separator — always shown when there are two halves or htScore is known */}
       {(firstHalf.length > 0 || secondHalf.length > 0) && (
         <div className="flex items-center gap-2 py-1">
@@ -257,7 +299,9 @@ function EventsList({ events, htScore }: { events: MatchEvent[]; htScore: { h: n
           <div className="h-px flex-1 bg-[#EBF6F5]" />
         </div>
       )}
-      {secondHalf.map((e, i) => <EventRow key={`h2-${i}`} event={e} />)}
+      {secondHalf.map((e, i) => (
+        <EventRow key={`h2-${i}`} event={e} />
+      ))}
     </div>
   )
 }

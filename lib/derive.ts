@@ -1,6 +1,7 @@
 import type { GameState } from './types'
 import { encodeClientKey } from './keys'
 import { MATCH_BY_ID, type Fixture } from './fixtures'
+import { pickFromScore } from './engine/wizard'
 
 export type MatchStatus = 'finished' | 'live' | 'open' | 'locked'
 
@@ -23,6 +24,15 @@ export function myPrediction(state: GameState | null, player: string, matchId: n
 
 export function myWizard(state: GameState | null, player: string, matchId: number) {
   return state?.wizardPicks?.[encodeClientKey(player)]?.[String(matchId)] ?? null
+}
+
+export function wizardGainFor(state: GameState | null, player: string, matchId: number): number | null {
+  const wiz = myWizard(state, player, matchId)
+  if (!wiz) return null
+  const odds = Number(wiz.oddsAtPick ?? 0) || 0
+  const result = resultFor(state, matchId)
+  if (!result) return odds || null
+  return wiz.pick === pickFromScore(result.h, result.a) ? odds : 0
 }
 
 export function resultFor(state: GameState | null, matchId: number) {
@@ -56,7 +66,8 @@ export function countdown(fixture: Fixture, now = Date.now()): string {
 
 // Decimal odds for a match from apiCache, if present. Returns [home, draw, away] or null.
 export function oddsFor(state: GameState | null, matchId: number): [number, number, number] | null {
-  const cache = state?.apiCache?.odds?.data as Record<string, { h?: number; x?: number; a?: number }> | undefined
+  const cache = state?.apiCache?.odds?.data as
+    Record<string, { h?: number; x?: number; a?: number }> | undefined
   const o = cache?.[String(matchId)]
   if (o && o.h && o.x && o.a) return [o.h, o.x, o.a]
   return null
@@ -70,8 +81,7 @@ export function liveScoreFor(
   matchId: number
 ): { h: number; a: number; elapsed?: string; status?: string } | null {
   const cache = state?.apiCache?.live?.data as
-    | Record<string, { h?: number; a?: number; elapsed?: string; status?: string }>
-    | undefined
+    Record<string, { h?: number; a?: number; elapsed?: string; status?: string }> | undefined
   const o = cache?.[String(matchId)]
   if (o && typeof o.h === 'number' && typeof o.a === 'number') {
     return { h: o.h, a: o.a, elapsed: o.elapsed, status: o.status }

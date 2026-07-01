@@ -3,6 +3,7 @@ import { computeAllScores, computeRankings } from './engine/scoring'
 import { computeWizardScores, computeWizardRankings, repairOdds, pickFromScore } from './engine/wizard'
 import { computeSwiss } from './engine/swiss'
 import { SWISS_ROUNDS } from './engine/match-meta'
+import { normalizeMatchCentre } from './match-events'
 import type {
   Bonus,
   Favorite,
@@ -60,11 +61,12 @@ export function buildPublicState(tables: Tables, options: PublicStateOptions = {
   for (const row of tables.apiCache ?? []) {
     if (typeof row.kind === 'string' && row.kind.startsWith('events_')) {
       const matchId = row.kind.slice('events_'.length)
-      if (Array.isArray(row.data?.events) && row.data.events.length > 0) {
-        matchEvents[matchId] = row.data.events
+      const centre = normalizeMatchCentre(row.data)
+      if (centre.events.length > 0) {
+        matchEvents[matchId] = centre.events
       }
-      if (row.data?.htScore) {
-        matchScores[matchId] = { ht: row.data.htScore }
+      if (centre.htScore) {
+        matchScores[matchId] = { ht: centre.htScore }
       }
     }
   }

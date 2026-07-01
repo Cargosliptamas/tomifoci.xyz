@@ -132,6 +132,24 @@ describe('buildPublicState — match centre events from apiCache', () => {
     // Scoring still comes only from result truth; events do not add points.
     expect((state.scores[encodeClientKey('Anna')] as { pts: number }).pts).toBe(0)
   })
+
+  it('exposes legacy array-shaped cached events after normalization', () => {
+    const tables = {
+      settings: [{ leagues: ['Mindenki'], players: [{ name: 'Anna' }] }],
+      predictions: [],
+      results: [{ matchId: 1, h: 2, a: 1 }],
+      apiCache: [
+        {
+          kind: 'events_1',
+          ts: 123,
+          data: [{ icon: '⚽', side: 'away', time: '12', player: 'Scorer' }]
+        }
+      ]
+    }
+
+    const state = buildPublicState(tables, { community: 'hu' })
+    expect(state.matchEvents?.['1']).toEqual([{ minute: '12', type: 'goal', player: 'Scorer', team: 'a' }])
+  })
 })
 
 // Wizard of ODDS must SCORE LIVE from the engine, not from a frozen snapshot.

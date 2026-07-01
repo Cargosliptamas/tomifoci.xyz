@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm'
 import { getSql, upsertImportedRow } from './db'
 import { MATCH_BY_ID, stadiumOf } from './fixtures'
 import { isKickedOff } from './engine/match-meta'
+import { mergeMatchCentreCache, normalizeMatchCentre } from './match-events'
 
 // LiveScore-API ingestion. Pulls pre-match odds + final scores and maps them to our match
 // ids (group/test by hu team-name; knockout by team-pair against the authoritative koTeams
@@ -131,7 +132,7 @@ function loserTeam(
 
 // Pull a hu team name from a live.json side ({name} nested English) or a fixtures.json side.
 function huTeamName(side: any, flat?: string): string {
-  const raw = side?.translations?.hu || side?.name || flat || ''
+  const raw = side?.translations?.hu || flat || side?.name || ''
   return canon(EN_HU[raw] || raw)
 }
 
@@ -163,21 +164,6 @@ function num(v: unknown): number {
 function parseScore(s: unknown): { h: number; a: number } | null {
   const m = /^\s*(\d+)\s*[-:]\s*(\d+)\s*$/.exec(String(s ?? ''))
   return m ? { h: Number(m[1]), a: Number(m[2]) } : null
-}
-
-function mergeEventCache(prev: any, next: any) {
-  const cachedEvents = Array.isArray(prev?.events) ? prev.events : []
-  const nextEvents = Array.isArray(next?.events) ? next.events : []
-  return {
-    ...prev,
-    ...next,
-    events: nextEvents.length > 0 ? nextEvents : cachedEvents,
-    lineups: next?.lineups ?? prev?.lineups ?? null,
-    odds: next?.odds ?? prev?.odds ?? null,
-    status: next?.status || prev?.status || '',
-    venue: next?.venue ?? prev?.venue ?? null,
-    htScore: next?.htScore ?? prev?.htScore ?? null
-  }
 }
 
 function loadDataFixtures(): Array<{ id: number; home: string; away: string; stage: string }> {
@@ -278,8 +264,8 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       }
       for (const f of data?.fixtures ?? data ?? []) {
         fixturesSeen++
-        const huHome = canon(f.home_translations?.hu || f.home_name)
-        const huAway = canon(f.away_translations?.hu || f.away_name)
+        const huHome = huTeamName(f.home, f.home_translations?.hu || f.home_name)
+        const huAway = huTeamName(f.away, f.away_translations?.hu || f.away_name)
         const pre = f.odds?.pre
         if (!pre) continue
         const ref = findId(huHome, huAway)
@@ -303,8 +289,8 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       }
       for (const m of data?.match ?? data ?? []) {
         const ref = findId(
-          canon(m.home_translations?.hu || m.home_name),
-          canon(m.away_translations?.hu || m.away_name)
+          huTeamName(m.home, m.home_translations?.hu || m.home_name),
+          huTeamName(m.away, m.away_translations?.hu || m.away_name)
         )
         if (!ref) continue
         const sc = parseScore(m.ft_score || m.score)
@@ -465,7 +451,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           info.venue ||
           stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
           null
-        const data = mergeEventCache(existingEventPayloads.get(cacheKey)?.data, {
+        const data = mergeMatchCentreCache(existingEventPayloads.get(cacheKey)?.data, {
           events,
           lineups: null,
           odds: null,
@@ -487,7 +473,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       const matchId = Number(mid)
       const cacheKey = `events_${matchId}`
       const existing = existingEventPayloads.get(cacheKey)?.data
-      if (Array.isArray(existing?.events) && existing.events.length > 0) continue
+      if (normalizeMatchCentre(existing).events.length > 0) continue
       if (!isKickedOff(matchId, now2)) continue
       try {
         const evData = await ls(key, secret, '/scores/events.json', { id: info.apiId })
@@ -499,7 +485,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           (typeof evMatchObj?.venue === 'string' ? evMatchObj.venue : evMatchObj?.venue?.name) ||
           stadiumOf(MATCH_BY_ID[matchId]?.venue ?? null) ||
           null
-        const data = mergeEventCache(existing, {
+        const data = mergeMatchCentreCache(existing, {
           events,
           lineups: null,
           odds: null,
@@ -659,10 +645,12 @@ function teamNameOf(t: any): string {
   return t.name || t.team_name || t.short_name || ''
 }
 function huHomeName(m: any): string {
-  return m?.home_translations?.hu || m?.home_name || teamNameOf(m?.home) || m?.localteam_name || ''
+  const raw = m?.home_translations?.hu || m?.home_name || teamNameOf(m?.home) || m?.localteam_name || ''
+  return canon(EN_HU[raw] || raw)
 }
 function huAwayName(m: any): string {
-  return m?.away_translations?.hu || m?.away_name || teamNameOf(m?.away) || m?.visitorteam_name || ''
+  const raw = m?.away_translations?.hu || m?.away_name || teamNameOf(m?.away) || m?.visitorteam_name || ''
+  return canon(EN_HU[raw] || raw)
 }
 function listOf(data: any): any[] {
   return data?.match ?? data?.matches ?? data?.fixtures ?? (Array.isArray(data) ? data : []) ?? []
