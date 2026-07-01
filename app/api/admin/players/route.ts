@@ -12,6 +12,14 @@ import {
   HU_ONLY_TABLES,
   type RosterPlayer
 } from '@/lib/admin'
+import {
+  addLeague,
+  deleteLeague as deleteLeagueFromRoster,
+  normalizeLeagueList,
+  renameLeague as renameLeagueInRoster,
+  setPlayerLeagues as setPlayerLeaguesInRoster,
+  type LeaguePlayer
+} from '@/lib/admin-leagues'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -26,11 +34,24 @@ export const runtime = 'nodejs'
 const TEN_DAYS_MS = 10 * 24 * 3600 * 1000
 
 type Body = {
-  action?: 'create' | 'rename' | 'delete' | 'restore' | 'setPin'
+  action?:
+    | 'create'
+    | 'rename'
+    | 'delete'
+    | 'restore'
+    | 'setPin'
+    | 'createLeague'
+    | 'renameLeague'
+    | 'deleteLeague'
+    | 'setLeagues'
   name?: string
   oldName?: string
   newName?: string
   pin?: string
+  league?: string
+  oldLeague?: string
+  newLeague?: string
+  leagues?: string[]
   community?: 'hu' | 'en'
 }
 
@@ -59,6 +80,14 @@ export async function POST(request: Request) {
         return await restorePlayer(String(body.name ?? ''), community)
       case 'setPin':
         return await setPlayerPin(String(body.name ?? ''), String(body.pin ?? ''), community)
+      case 'createLeague':
+        return await createLeague(String(body.league ?? ''))
+      case 'renameLeague':
+        return await renameLeague(String(body.oldLeague ?? ''), String(body.newLeague ?? ''))
+      case 'deleteLeague':
+        return await deleteLeague(String(body.league ?? ''))
+      case 'setLeagues':
+        return await setPlayerLeagues(String(body.name ?? ''), body.leagues ?? [])
       default:
         return NextResponse.json({ ok: false, error: 'bad-action' }, { status: 400 })
     }
@@ -339,4 +368,113 @@ async function setPlayerPin(name: string, pin: string, community: 'hu' | 'en') {
     after: { player: name, community }
   })
   return NextResponse.json({ ok: true })
+}
+
+type LeagueSettings = {
+  settingsId: number
+  leagues: string[]
+  players: RosterPlayer[]
+}
+
+async function readLeagueSettings(): Promise<LeagueSettings | null> {
+  const sql = getSql()
+  const rows = (await sql`
+    SELECT id, leagues, players
+    FROM settings
+    ORDER BY id ASC
+    LIMIT 1
+  `) as Array<{ id: number; leagues: string[] | null; players: RosterPlayer[] | null }>
+  const row = rows[0]
+  if (!row) return null
+  return {
+    settingsId: row.id,
+    leagues: normalizeLeagueList(row.leagues),
+    players: Array.isArray(row.players) ? row.players : []
+  }
+}
+
+async function writeLeagueSettings(
+  settingsId: number,
+  leagues: string[],
+  players: LeaguePlayer[]
+): Promise<void> {
+  const sql = getSql()
+  await sql`
+    UPDATE settings
+    SET leagues = ${JSON.stringify(normalizeLeagueList(leagues))}::jsonb,
+        players = ${JSON.stringify(players)}::jsonb
+    WHERE id = ${settingsId}
+  `
+}
+
+async function createLeague(leagueName: string) {
+  const settings = await readLeagueSettings()
+  if (!settings) return NextResponse.json({ ok: false, error: 'no-settings' }, { status: 500 })
+
+  const next = addLeague(settings.leagues, leagueName)
+  if (!next.ok) return NextResponse.json({ ok: false, error: next.error }, { status: 400 })
+
+  await writeLeagueSettings(settings.settingsId, next.leagues, settings.players)
+  await logTxn({
+    type: 'league_create',
+    label: `Liga létrehozva: ${next.league}`,
+    path: 'players',
+    before: settings.leagues,
+    after: next.leagues
+  })
+  return NextResponse.json({ ok: true, league: next.league })
+}
+
+async function renameLeague(oldLeagueName: string, newLeagueName: string) {
+  const settings = await readLeagueSettings()
+  if (!settings) return NextResponse.json({ ok: false, error: 'no-settings' }, { status: 500 })
+
+  const next = renameLeagueInRoster(settings.leagues, settings.players, oldLeagueName, newLeagueName)
+  if (!next.ok) return NextResponse.json({ ok: false, error: next.error }, { status: 400 })
+
+  await writeLeagueSettings(settings.settingsId, next.leagues, next.players)
+  await logTxn({
+    type: 'league_rename',
+    label: `Liga átnevezve: ${next.oldLeague} → ${next.newLeague}`,
+    path: 'players',
+    before: { leagues: settings.leagues, players: settings.players },
+    after: { leagues: next.leagues, players: next.players }
+  })
+  return NextResponse.json({ ok: true, oldLeague: next.oldLeague, newLeague: next.newLeague })
+}
+
+async function deleteLeague(leagueName: string) {
+  const settings = await readLeagueSettings()
+  if (!settings) return NextResponse.json({ ok: false, error: 'no-settings' }, { status: 500 })
+
+  const next = deleteLeagueFromRoster(settings.leagues, settings.players, leagueName)
+  if (!next.ok) return NextResponse.json({ ok: false, error: next.error }, { status: 400 })
+
+  await writeLeagueSettings(settings.settingsId, next.leagues, next.players)
+  await logTxn({
+    type: 'league_delete',
+    label: `Liga törölve: ${next.league}`,
+    path: 'players',
+    before: { leagues: settings.leagues, players: settings.players },
+    after: { leagues: next.leagues, players: next.players }
+  })
+  return NextResponse.json({ ok: true, league: next.league })
+}
+
+async function setPlayerLeagues(playerName: string, leagues: string[]) {
+  const settings = await readLeagueSettings()
+  if (!settings) return NextResponse.json({ ok: false, error: 'no-settings' }, { status: 500 })
+
+  const next = setPlayerLeaguesInRoster(settings.players, playerName, leagues, settings.leagues)
+  if (!next.ok) return NextResponse.json({ ok: false, error: next.error }, { status: 400 })
+
+  await writeLeagueSettings(settings.settingsId, settings.leagues, next.players)
+  await logTxn({
+    type: 'player_leagues',
+    label: `Játékos ligái frissítve: ${playerName}`,
+    path: 'players',
+    before: settings.players.find((player) => player.name === playerName)?.leagues ?? [],
+    after: next.leagues
+  })
+  return NextResponse.json({ ok: true, name: playerName, leagues: next.leagues })
 }

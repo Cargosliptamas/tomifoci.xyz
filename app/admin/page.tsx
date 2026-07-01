@@ -83,6 +83,10 @@ async function adminPost(
 function writeErrorMsg(error?: string): string {
   if (error === 'admin-not-configured') return 'ADMIN_TOKEN nincs beállítva a Vercelben'
   if (error === 'unauthorized') return 'Hibás token'
+  if (error === 'league-exists') return 'Ez a liga már létezik'
+  if (error === 'league-not-found') return 'A liga nem található'
+  if (error === 'bad-league') return 'Érvénytelen liga név'
+  if (error === 'player-not-found') return 'A játékos nem található'
   return 'Backend még nincs bekötve'
 }
 
@@ -414,11 +418,14 @@ function Players({
 }) {
   const [search, setSearch] = useState('')
   const players = state?.settings.players ?? []
+  const leagues = state?.settings.leagues?.length ? state.settings.leagues : ['Mindenki']
   const q = search.toLowerCase()
   const list = players.filter((p) => !q || p.name.toLowerCase().includes(q))
 
   return (
     <>
+      <LeagueManager leagues={leagues} players={players} ask={ask} write={write} />
+
       <div className="mb-4 flex flex-wrap gap-2.5">
         <input
           value={search}
@@ -438,8 +445,8 @@ function Players({
       <div className="mb-5 overflow-hidden rounded-[16px] border border-[#E1EAEA] bg-white">
         <div className="flex border-b border-[#EEF3F3] px-4 py-2.5 text-[11px] font-black tracking-[0.06em] text-[#11302E]/45">
           <span className="flex-1">JÁTÉKOS</span>
-          <span className="w-[120px]">LIGA</span>
-          <span className="w-[156px] text-right">MŰVELET</span>
+          <span className="w-[180px]">LIGÁK</span>
+          <span className="w-[192px] text-right">MŰVELET</span>
         </div>
         {list.length === 0 ? (
           <div className="px-4 py-6 text-center text-[13px] text-[#11302E]/50">
@@ -457,10 +464,32 @@ function Players({
                 </span>
                 <span className="text-[14px] font-bold">{p.name}</span>
               </span>
-              <span className="w-[120px] text-[12px] font-semibold text-[#11302E]/60">
-                {p.leagues?.[0] ?? '—'}
+              <span
+                className="w-[180px] truncate text-[12px] font-semibold text-[#11302E]/60"
+                title={(p.leagues ?? []).join(', ')}
+              >
+                {p.leagues?.length ? p.leagues.join(', ') : '—'}
               </span>
-              <span className="flex w-[156px] justify-end gap-1.5">
+              <span className="flex w-[192px] justify-end gap-1.5">
+                <button
+                  onClick={() => {
+                    const available = leagues.filter((league) => league !== 'Mindenki')
+                    const answer = window.prompt(
+                      `Ligák vesszővel (${p.name})\nElérhető: ${available.join(', ') || 'nincs'}`,
+                      (p.leagues ?? []).join(', ')
+                    )
+                    if (answer == null) return
+                    void write(
+                      'players',
+                      { action: 'setLeagues', name: p.name, leagues: parseLeagueInput(answer) },
+                      `✓ Ligák frissítve — ${p.name} · naplózva`
+                    )
+                  }}
+                  className="rounded-[8px] border border-[#E1EAEA] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#11302E]"
+                  title="Ligák szerkesztése"
+                >
+                  🏷
+                </button>
                 <button
                   onClick={() => {
                     const newName = window.prompt(`Új név (jelenlegi: ${p.name})`, p.name)?.trim()
@@ -526,6 +555,128 @@ function Players({
       <RestoreDeletedPlayer write={write} />
     </>
   )
+}
+
+function LeagueManager({
+  leagues,
+  players,
+  ask,
+  write
+}: {
+  leagues: string[]
+  players: Array<{ name: string; leagues?: string[] }>
+  ask: AskFn
+  write: WriteFn
+}) {
+  const [newLeague, setNewLeague] = useState('')
+  const normalized = ['Mindenki', ...leagues.filter((league) => league && league !== 'Mindenki')]
+
+  return (
+    <div className="mb-4 rounded-[16px] border border-[#E1EAEA] bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-black tracking-[0.08em] text-[#11302E]/55">LIGÁK</div>
+          <div className="mt-0.5 text-[13px] text-[#11302E]/55">
+            {normalized.length} liga · tagság a játékos sorában szerkeszthető
+          </div>
+        </div>
+        <div className="flex min-w-[240px] flex-1 justify-end gap-2">
+          <input
+            value={newLeague}
+            onChange={(e) => setNewLeague(e.target.value)}
+            placeholder="Új liga neve…"
+            className="min-w-[140px] flex-1 rounded-[10px] border border-[#E1EAEA] px-3 py-2 text-[13px] outline-none"
+          />
+          <button
+            onClick={() => {
+              const league = newLeague.trim()
+              if (!league) return
+              void write(
+                'players',
+                { action: 'createLeague', league },
+                `✓ Liga létrehozva — ${league} · naplózva`
+              )
+              setNewLeague('')
+            }}
+            disabled={!newLeague.trim()}
+            className="rounded-[10px] px-3.5 py-2 text-[13px] font-extrabold disabled:opacity-50"
+            style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
+          >
+            + Liga
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {normalized.map((league) => {
+          const isGlobal = league === 'Mindenki'
+          const memberCount = isGlobal
+            ? players.length
+            : players.filter((p) => p.leagues?.includes(league)).length
+          return (
+            <div key={league} className="rounded-[12px] border border-[#EEF3F3] bg-[#f8fbfb] px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13px] font-black">{league}</span>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-[#11302E]/55">
+                  {memberCount} fő
+                </span>
+              </div>
+              <div className="mt-2 flex gap-1.5">
+                {isGlobal ? (
+                  <span className="rounded-[8px] bg-[#EBF6F5] px-2.5 py-1.5 text-[11px] font-bold text-[#007E73]">
+                    alapliga
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        const next = window.prompt(`Új liga név (${league})`, league)?.trim()
+                        if (!next || next === league) return
+                        void write(
+                          'players',
+                          { action: 'renameLeague', oldLeague: league, newLeague: next },
+                          `✓ Liga átnevezve — ${league} → ${next} · naplózva`
+                        )
+                      }}
+                      className="rounded-[8px] border border-[#E1EAEA] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#11302E]"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() =>
+                        ask({
+                          title: 'Liga törlése?',
+                          body: `„${league}” törlődik a liga listából és minden játékos tagságából. A játékosok és tippjeik megmaradnak.`,
+                          danger: true,
+                          yes: 'Liga törlése',
+                          onYes: () =>
+                            void write(
+                              'players',
+                              { action: 'deleteLeague', league },
+                              `✓ Liga törölve — ${league} · naplózva`
+                            )
+                        })
+                      }
+                      className="rounded-[8px] border border-[#f3d2cf] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#E5484D]"
+                    >
+                      🗑
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function parseLeagueInput(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
 }
 
 // Deleted players aren't surfaced in the public state, so restore is by name: the
