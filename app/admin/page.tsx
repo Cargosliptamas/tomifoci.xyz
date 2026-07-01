@@ -61,12 +61,13 @@ const TITLES: Record<Section, readonly [string, string]> = {
 async function adminPost(
   path: string,
   token: string,
+  session: string,
   body: unknown
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/admin/${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-admin-token': token },
+      headers: adminHeaders(token, session),
       body: JSON.stringify(body)
     })
     const json = (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as {
@@ -80,13 +81,26 @@ async function adminPost(
   }
 }
 
+function adminHeaders(token: string, session: string, json = true): Record<string, string> {
+  return {
+    ...(json ? { 'content-type': 'application/json' } : {}),
+    'x-admin-token': token,
+    ...(session ? { 'x-admin-session': session } : {})
+  }
+}
+
 function writeErrorMsg(error?: string): string {
   if (error === 'admin-not-configured') return 'ADMIN_TOKEN nincs beállítva a Vercelben'
   if (error === 'unauthorized') return 'Hibás token'
+  if (error === 'totp-required') return '2FA kód szükséges'
+  if (error === 'bad-totp') return 'Hibás 2FA kód'
+  if (error === 'admin-session-required') return 'Admin session lejárt vagy hiányzik'
   if (error === 'league-exists') return 'Ez a liga már létezik'
   if (error === 'league-not-found') return 'A liga nem található'
   if (error === 'bad-league') return 'Érvénytelen liga név'
   if (error === 'player-not-found') return 'A játékos nem található'
+  if (error === 'push-not-configured') return 'Push nincs konfigurálva: VAPID_PUBLIC/VAPID_PRIVATE hiányzik'
+  if (error === 'subscriptions-unavailable') return 'Push feliratkozások nem elérhetők'
   return 'Backend még nincs bekötve'
 }
 
@@ -126,6 +140,10 @@ function txnEntries(state: GameState | null): TxnRow[] {
 
 export default function AdminPage() {
   const [token, setToken] = useState('')
+  const [totp, setTotp] = useState('')
+  const [adminSession, setAdminSession] = useState('')
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
   const [authed, setAuthed] = useState(false)
   const [section, setSection] = useState<Section>('dash')
   const [state, setState] = useState<GameState | null>(null)
@@ -148,12 +166,40 @@ export default function AdminPage() {
   const ask: AskFn = (cfg) => setConfirm(cfg)
 
   const write: WriteFn = async (path, body, successMsg) => {
-    const res = await adminPost(path, token, body)
+    const res = await adminPost(path, token, adminSession, body)
     if (res.ok) {
       await loadState()
       showToast(successMsg)
     } else {
       showToast(writeErrorMsg(res.error))
+    }
+  }
+
+  async function login() {
+    if (!token || authBusy) return
+    setAuthBusy(true)
+    setAuthError(null)
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token, totp })
+      })
+      const json = (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as {
+        ok?: boolean
+        error?: string
+        session?: string
+      }
+      if (json.ok) {
+        setAdminSession(json.session ?? '')
+        setAuthed(true)
+      } else {
+        setAuthError(writeErrorMsg(json.error))
+      }
+    } catch {
+      setAuthError('network')
+    } finally {
+      setAuthBusy(false)
     }
   }
 
@@ -171,9 +217,7 @@ export default function AdminPage() {
           <div className="text-[13px]" style={{ color: '#9fe6dd' }}>
             VB Tippjáték 2026 · üzemeltetés
           </div>
-          <div className="mono mt-[10px] text-[11px] tracking-[0.04em] text-white/50">
-            ADMIN_TOKEN belépés
-          </div>
+          <div className="mono mt-[10px] text-[11px] tracking-[0.04em] text-white/50">ADMIN_TOKEN + 2FA</div>
           <input
             type="password"
             value={token}
@@ -181,16 +225,24 @@ export default function AdminPage() {
             placeholder="ADMIN_TOKEN"
             className="mono mt-6 w-full rounded-[12px] border border-white/20 bg-white/10 px-4 py-3 text-center text-white placeholder-white/40 outline-none"
           />
+          <input
+            value={totp}
+            onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="2FA kód, ha be van kapcsolva"
+            inputMode="numeric"
+            className="mono mt-3 w-full rounded-[12px] border border-white/20 bg-white/10 px-4 py-3 text-center text-white placeholder-white/40 outline-none"
+          />
+          {authError && <div className="mt-3 text-[12px] font-bold text-[#ffb6b6]">{authError}</div>}
           <button
-            onClick={() => token && setAuthed(true)}
-            className="mt-4 w-full rounded-[12px] py-3 text-[14px] font-black"
+            onClick={() => void login()}
+            disabled={!token || authBusy}
+            className="mt-4 w-full rounded-[12px] py-3 text-[14px] font-black disabled:opacity-60"
             style={{ background: 'linear-gradient(160deg,#00C9BA,#00A99B)', color: '#063b37' }}
           >
-            Belépés
+            {authBusy ? 'Belépés…' : 'Belépés'}
           </button>
           <div className="mt-4 text-[11px] text-white/40">
-            A token a Vercel <span className="mono">ADMIN_TOKEN</span> változójával egyezik. Ha nincs
-            beállítva, az írási műveletek le vannak tiltva.
+            Ha <span className="mono">ADMIN_TOTP_SECRET</span> be van állítva, a 6 jegyű kód is kötelező.
           </div>
         </div>
       </div>
@@ -247,6 +299,8 @@ export default function AdminPage() {
                   onClick={() => {
                     setAuthed(false)
                     setToken('')
+                    setTotp('')
+                    setAdminSession('')
                     setSection('dash')
                   }}
                   className="flex size-[26px] items-center justify-center rounded-full bg-[#f1f5f5] text-[13px]"
@@ -269,6 +323,7 @@ export default function AdminPage() {
             {section === 'results' && (
               <Results
                 token={token}
+                adminSession={adminSession}
                 state={state}
                 onSaved={(m) => void loadState().then(() => showToast(m))}
               />
@@ -278,10 +333,11 @@ export default function AdminPage() {
             {section === 'swiss' && <Swiss state={state} ask={ask} write={write} />}
             {section === 'api' && <ApiSection state={state} ask={ask} write={write} showToast={showToast} />}
             {section === 'log' && <LogSection state={state} ask={ask} write={write} showToast={showToast} />}
-            {section === 'leads' && <Leads token={token} showToast={showToast} />}
+            {section === 'leads' && <Leads token={token} adminSession={adminSession} showToast={showToast} />}
             {section === 'backup' && (
               <Backup
                 token={token}
+                adminSession={adminSession}
                 ask={ask}
                 showToast={showToast}
                 onApplied={() =>
@@ -289,7 +345,7 @@ export default function AdminPage() {
                 }
               />
             )}
-            {section === 'diag' && <Diagnostics token={token} />}
+            {section === 'diag' && <Diagnostics token={token} adminSession={adminSession} />}
           </div>
         </main>
       </div>
@@ -719,10 +775,12 @@ function RestoreDeletedPlayer({ write }: { write: WriteFn }) {
 
 function Results({
   token,
+  adminSession,
   state,
   onSaved
 }: {
   token: string
+  adminSession: string
   state: GameState | null
   onSaved: (msg: string) => void
 }) {
@@ -748,7 +806,7 @@ function Results({
       />
       <div className="flex flex-col gap-3">
         {list.map((m) => (
-          <ResultRow key={m.id} token={token} fixture={m} onSaved={onSaved} />
+          <ResultRow key={m.id} token={token} adminSession={adminSession} fixture={m} onSaved={onSaved} />
         ))}
       </div>
 
@@ -759,17 +817,19 @@ function Results({
         A KO-helyek a csoporteredményekből <b>automatikusan</b> származnak (bracket.autoUpdateBracket). Kézi
         felülírás csak vészhelyzetben — minden manuális slot jelölve lesz.
       </div>
-      <KoTeamsEditor token={token} state={state} onSaved={onSaved} />
+      <KoTeamsEditor token={token} adminSession={adminSession} state={state} onSaved={onSaved} />
     </>
   )
 }
 
 function KoTeamsEditor({
   token,
+  adminSession,
   state,
   onSaved
 }: {
   token: string
+  adminSession: string
   state: GameState | null
   onSaved: (msg: string) => void
 }) {
@@ -795,7 +855,7 @@ function KoTeamsEditor({
     try {
       const res = await fetch('/api/admin/koteams', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        headers: adminHeaders(token, adminSession),
         body: JSON.stringify(
           action === 'clear' ? { matchId, action: 'clear' } : { matchId, home, away, confirmed }
         )
@@ -808,7 +868,7 @@ function KoTeamsEditor({
             : `✓ KO párosítás mentve — #${matchId} · naplózva`
         )
       } else {
-        setErr(json.error === 'unauthorized' ? 'Hibás token' : (json.error ?? 'hiba'))
+        setErr(writeErrorMsg(json.error))
       }
     } finally {
       setBusy(false)
@@ -890,10 +950,12 @@ function KoTeamsEditor({
 
 function ResultRow({
   token,
+  adminSession,
   fixture,
   onSaved
 }: {
   token: string
+  adminSession: string
   fixture: { id: number; home: string; away: string }
   onSaved: (msg: string) => void
 }) {
@@ -911,7 +973,7 @@ function ResultRow({
     try {
       const res = await fetch('/api/admin/result', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        headers: adminHeaders(token, adminSession),
         body: JSON.stringify(
           isKo ? { matchId: fixture.id, h, a, penH, penA, action } : { matchId: fixture.id, h, a, action }
         )
@@ -927,9 +989,7 @@ function ResultRow({
         setErr(
           json.error === 'admin-not-configured'
             ? 'ADMIN_TOKEN nincs beállítva a Vercelben'
-            : json.error === 'unauthorized'
-              ? 'Hibás token'
-              : (json.error ?? 'hiba')
+            : writeErrorMsg(json.error)
         )
     } finally {
       setBusy(false)
@@ -1366,6 +1426,26 @@ function ApiSection({
         )}
       </div>
 
+      <div className="mb-4 rounded-[16px] border border-[#E1EAEA] bg-white p-4">
+        <div className="mb-1.5 text-xs font-black tracking-[0.08em] text-[#11302E]/55">PUSH ÉRTESÍTÉSEK</div>
+        <div className="mb-3 text-[13px] text-[#11302E]/70">
+          Eredmény mentéskor és cron által talált új végeredménynél automatikus értesítés megy, ha a VAPID
+          kulcsok be vannak állítva.
+        </div>
+        <button
+          onClick={() =>
+            void write(
+              'push',
+              { title: 'Tomifoci teszt', body: 'Push értesítés működik.', url: '/meccs-center' },
+              '✓ Teszt push elküldve · naplózva'
+            )
+          }
+          className="rounded-[11px] border border-[#cfe0de] bg-[#f6faf9] px-5 py-[11px] text-[14px] font-extrabold text-[#007E73]"
+        >
+          🔔 Teszt push küldése
+        </button>
+      </div>
+
       <div className="rounded-[16px] border border-[#f3d2cf] bg-white p-4">
         <div className="mb-1.5 text-xs font-black tracking-[0.08em] text-[#E5484D]">
           ⚠️ VÉSZHELYZETI KÉZI POLL
@@ -1532,7 +1612,15 @@ type LeadRow = {
   handled: boolean
 }
 
-function Leads({ token, showToast }: { token: string; showToast: (m: string) => void }) {
+function Leads({
+  token,
+  adminSession,
+  showToast
+}: {
+  token: string
+  adminSession: string
+  showToast: (m: string) => void
+}) {
   const [leads, setLeads] = useState<LeadRow[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1540,7 +1628,7 @@ function Leads({ token, showToast }: { token: string; showToast: (m: string) => 
   async function post(body: unknown): Promise<{ ok?: boolean; error?: string; leads?: LeadRow[] }> {
     const res = await fetch('/api/admin/leads', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-admin-token': token },
+      headers: adminHeaders(token, adminSession),
       body: JSON.stringify(body)
     })
     return (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as {
@@ -1667,11 +1755,13 @@ type RawStateFile = {
 
 function Backup({
   token,
+  adminSession,
   ask,
   showToast,
   onApplied
 }: {
   token: string
+  adminSession: string
   ask: AskFn
   showToast: (m: string) => void
   onApplied: () => void
@@ -1687,7 +1777,7 @@ function Backup({
     try {
       const res = await fetch('/api/admin/backup', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-admin-token': token },
+        headers: adminHeaders(token, adminSession),
         body: JSON.stringify(body)
       })
       return (await res.json().catch(() => ({ ok: false, error: 'no-json' }))) as any
@@ -1927,7 +2017,7 @@ function Status({ label, ok, value }: { label: string; ok: boolean; value: strin
 // ── Diagnostics / automated self-test ────────────────────────────────────────
 type DiagCheck = { name: string; ok: boolean; detail: string; severity: 'pass' | 'warn' | 'fail' }
 
-function Diagnostics({ token }: { token: string }) {
+function Diagnostics({ token, adminSession }: { token: string; adminSession: string }) {
   const [checks, setChecks] = useState<DiagCheck[] | null>(null)
   const [running, setRunning] = useState(false)
   const [ranAt, setRanAt] = useState<number | null>(null)
@@ -1938,7 +2028,7 @@ function Diagnostics({ token }: { token: string }) {
     setErr(null)
     try {
       const res = await fetch('/api/admin/diagnostics', {
-        headers: { 'x-admin-token': token },
+        headers: adminHeaders(token, adminSession, false),
         cache: 'no-store'
       })
       const json = await res.json()

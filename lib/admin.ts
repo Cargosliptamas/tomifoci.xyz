@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
 import { getSql } from '@/lib/db'
+import { isAdminMfaEnabled, verifyAdminSession } from '@/lib/admin-auth'
 
 // ── Admin auth guard ─────────────────────────────────────────────────────────
-// Same contract as app/api/admin/result/route.ts: 503 if the token isn't
-// configured at all, 401 if it's present but doesn't match. Until the adminAuth
-// table is seeded in Neon, ADMIN_TOKEN is the only thing protecting truth writes.
+// Same base contract as app/api/admin/result/route.ts: 503 if the token isn't
+// configured at all, 401 if it is present but wrong. When ADMIN_TOTP_SECRET is
+// configured, the raw token is only a login factor: admin writes must also carry
+// a signed x-admin-session minted by /api/admin/auth after a valid TOTP code.
 export function authorized(request: Request): boolean {
   const token = process.env.ADMIN_TOKEN
   if (!token) return false
-  return request.headers.get('x-admin-token') === token
+  if (request.headers.get('x-admin-token') !== token) return false
+  if (!isAdminMfaEnabled()) return true
+  return verifyAdminSession(request.headers.get('x-admin-session'))
 }
 
 // Returns a NextResponse to short-circuit with, or null when the request is
@@ -18,7 +22,10 @@ export function adminGuard(request: Request): NextResponse | null {
     return NextResponse.json({ ok: false, error: 'admin-not-configured' }, { status: 503 })
   }
   if (!authorized(request)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
+    return NextResponse.json(
+      { ok: false, error: isAdminMfaEnabled() ? 'admin-session-required' : 'unauthorized' },
+      { status: 401 }
+    )
   }
   return null
 }
@@ -92,7 +99,11 @@ export async function readRoster(
   return { settingsId: row.id, players: Array.isArray(row.players) ? row.players : [] }
 }
 
-export async function writeRoster(community: 'hu' | 'en', settingsId: number, players: RosterPlayer[]): Promise<void> {
+export async function writeRoster(
+  community: 'hu' | 'en',
+  settingsId: number,
+  players: RosterPlayer[]
+): Promise<void> {
   const sql = getSql()
   const json = JSON.stringify(players)
   if (community === 'en') {
@@ -105,7 +116,12 @@ export async function writeRoster(community: 'hu' | 'en', settingsId: number, pl
 // ── Player-row matching across name-keyed imported tables (INV-02) ────────────
 // favorites/bonuses/swissProfiles → payload.player; pinHashes → payload.name;
 // wizard tables may carry the name only in convex_id ('hu:<player>[:matchId]').
-export function rowMatchesPlayer(table: string, row: StoredRow, name: string, community: 'hu' | 'en'): boolean {
+export function rowMatchesPlayer(
+  table: string,
+  row: StoredRow,
+  name: string,
+  community: 'hu' | 'en'
+): boolean {
   const p = row.payload ?? {}
   const comm = (p.community ?? 'hu') as string
   switch (table) {

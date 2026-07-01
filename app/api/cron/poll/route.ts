@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { runLiveScorePoll } from '@/lib/livescore'
+import { sendResultPush } from '@/lib/result-notifications'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -28,7 +29,8 @@ async function handle(request: Request) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   }
   const summary = await runLiveScorePoll()
-  return NextResponse.json(summary, { status: summary.ok ? 200 : 503 })
+  const push = summary.ok ? await sendResultPush(summary.writtenResults ?? []) : undefined
+  return NextResponse.json(push ? { ...summary, push } : summary, { status: summary.ok ? 200 : 503 })
 }
 
 export const GET = handle

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSql, loadPublicStateFromNeon } from '@/lib/db'
+import { adminGuard } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -8,17 +9,12 @@ export const maxDuration = 60
 // One-click admin diagnostics — runs the DB/data-integrity self-tests live and reports
 // pass/fail. Mirrors the monitoring scripts (drift, write-health, encoded-name reconciliation)
 // so an operator can verify system health from the console without the CLI.
-function authorized(request: Request): boolean {
-  const token = process.env.ADMIN_TOKEN
-  if (!token) return false
-  return request.headers.get('x-admin-token') === token
-}
 
 type Check = { name: string; ok: boolean; detail: string; severity: 'pass' | 'warn' | 'fail' }
 
 export async function GET(request: Request) {
-  if (!process.env.ADMIN_TOKEN) return NextResponse.json({ ok: false, error: 'admin-not-configured' }, { status: 503 })
-  if (!authorized(request)) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
+  const denied = adminGuard(request)
+  if (denied) return denied
 
   const sql = getSql()
   const checks: Check[] = []
@@ -29,7 +25,12 @@ export async function GET(request: Request) {
     await sql`SELECT 1`
     checks.push({ name: 'Adatbázis kapcsolat', ok: true, detail: 'Neon elérhető', severity: 'pass' })
   } catch (e) {
-    checks.push({ name: 'Adatbázis kapcsolat', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'fail' })
+    checks.push({
+      name: 'Adatbázis kapcsolat',
+      ok: false,
+      detail: e instanceof Error ? e.message : 'hiba',
+      severity: 'fail'
+    })
     return NextResponse.json({ ok: false, checks, ts: Date.now() })
   }
 
@@ -40,15 +41,26 @@ export async function GET(request: Request) {
     const rb = await sql`SELECT h, a FROM results WHERE match_id = ${SENTINEL}`
     await sql`DELETE FROM results WHERE match_id = ${SENTINEL}`
     const ok = rb[0]?.h === 3 && rb[0]?.a === 1
-    checks.push({ name: 'Írás-egészség (eredmény)', ok, detail: ok ? 'insert → read → delete sikeres' : 'visszaolvasás hibás', severity: ok ? 'pass' : 'fail' })
+    checks.push({
+      name: 'Írás-egészség (eredmény)',
+      ok,
+      detail: ok ? 'insert → read → delete sikeres' : 'visszaolvasás hibás',
+      severity: ok ? 'pass' : 'fail'
+    })
   } catch (e) {
-    checks.push({ name: 'Írás-egészség (eredmény)', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'fail' })
+    checks.push({
+      name: 'Írás-egészség (eredmény)',
+      ok: false,
+      detail: e instanceof Error ? e.message : 'hiba',
+      severity: 'fail'
+    })
   }
 
   // 3) Data integrity — no encoded (q_) names left in truth tables
   try {
     const [p] = await sql`SELECT COUNT(*)::int n FROM predictions WHERE player LIKE 'q\\_%'`
-    const [kv] = await sql`SELECT COUNT(*)::int n FROM imported_rows WHERE table_name IN ('favorites','bonuses') AND payload->>'player' LIKE 'q\\_%'`
+    const [kv] =
+      await sql`SELECT COUNT(*)::int n FROM imported_rows WHERE table_name IN ('favorites','bonuses') AND payload->>'player' LIKE 'q\\_%'`
     const total = (p.n ?? 0) + (kv.n ?? 0)
     checks.push({
       name: 'Adatintegritás (kódolt nevek)',
@@ -57,7 +69,12 @@ export async function GET(request: Request) {
       severity: total === 0 ? 'pass' : 'warn'
     })
   } catch (e) {
-    checks.push({ name: 'Adatintegritás (kódolt nevek)', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
+    checks.push({
+      name: 'Adatintegritás (kódolt nevek)',
+      ok: false,
+      detail: e instanceof Error ? e.message : 'hiba',
+      severity: 'warn'
+    })
   }
 
   // 4) Live derived-state sanity — rankings never exceed the roster
@@ -74,7 +91,12 @@ export async function GET(request: Request) {
       severity: ok ? 'pass' : 'warn'
     })
   } catch (e) {
-    checks.push({ name: 'Származtatott rangsorok', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
+    checks.push({
+      name: 'Származtatott rangsorok',
+      ok: false,
+      detail: e instanceof Error ? e.message : 'hiba',
+      severity: 'warn'
+    })
   }
 
   // 5) Auth provisioning
@@ -87,7 +109,12 @@ export async function GET(request: Request) {
       severity: (a.n ?? 0) > 0 ? 'pass' : 'warn'
     })
   } catch (e) {
-    checks.push({ name: 'PIN-ek provizionálva', ok: false, detail: e instanceof Error ? e.message : 'hiba', severity: 'warn' })
+    checks.push({
+      name: 'PIN-ek provizionálva',
+      ok: false,
+      detail: e instanceof Error ? e.message : 'hiba',
+      severity: 'warn'
+    })
   }
 
   const allPass = checks.every((c) => c.ok)

@@ -1,28 +1,26 @@
 import { NextResponse } from 'next/server'
 import { getSql } from '@/lib/db'
-import { logTxn } from '@/lib/admin'
+import { adminGuard, logTxn } from '@/lib/admin'
+import { sendResultPush, type ResultPushInput } from '@/lib/result-notifications'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// Admin result upsert / clear. Guarded by ADMIN_TOKEN (set in Vercel env). Until the
-// adminAuth table is seeded in Neon, this token is the only thing protecting truth writes.
+// Admin result upsert / clear. Guarded by ADMIN_TOKEN, and by a signed admin
+// session when ADMIN_TOTP_SECRET is configured.
 // Result writes are merge-upsert, never delete-all (INV-11).
-function authorized(request: Request): boolean {
-  const token = process.env.ADMIN_TOKEN
-  if (!token) return false
-  return request.headers.get('x-admin-token') === token
-}
-
 export async function POST(request: Request) {
-  if (!process.env.ADMIN_TOKEN) {
-    return NextResponse.json({ ok: false, error: 'admin-not-configured' }, { status: 503 })
-  }
-  if (!authorized(request)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const denied = adminGuard(request)
+  if (denied) return denied
 
-  let body: { matchId?: number; h?: number; a?: number; penH?: number; penA?: number; action?: 'save' | 'clear' }
+  let body: {
+    matchId?: number
+    h?: number
+    a?: number
+    penH?: number
+    penA?: number
+    action?: 'save' | 'clear'
+  }
   try {
     body = await request.json()
   } catch {
@@ -36,7 +34,12 @@ export async function POST(request: Request) {
   try {
     if (body.action === 'clear') {
       await sql`DELETE FROM results WHERE match_id = ${matchId}`
-      await logTxn({ type: 'result', label: `Eredmény törölve: #${matchId}`, path: 'results', before: { matchId } })
+      await logTxn({
+        type: 'result',
+        label: `Eredmény törölve: #${matchId}`,
+        path: 'results',
+        before: { matchId }
+      })
       return NextResponse.json({ ok: true, cleared: true })
     }
 
@@ -54,6 +57,13 @@ export async function POST(request: Request) {
     }
     const penH = validPen(body.penH)
     const penA = validPen(body.penA)
+    const beforeRows = (await sql`
+      SELECT h, a, pen_h AS "penH", pen_a AS "penA"
+      FROM results
+      WHERE match_id = ${matchId}
+      LIMIT 1
+    `) as Array<ResultPushInput & { penH?: number | null; penA?: number | null }>
+    const before = beforeRows[0]
 
     // merge-upsert — never delete-all (INV-11)
     await sql`
@@ -68,7 +78,14 @@ export async function POST(request: Request) {
       path: 'results',
       after: { matchId, h, a, penH, penA }
     })
-    return NextResponse.json({ ok: true })
+    const changed =
+      !before ||
+      before.h !== h ||
+      before.a !== a ||
+      (before.penH ?? null) !== penH ||
+      (before.penA ?? null) !== penA
+    const push = changed ? await sendResultPush([{ matchId, h, a }]) : { ok: true, sent: 0, failed: 0 }
+    return NextResponse.json({ ok: true, push })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

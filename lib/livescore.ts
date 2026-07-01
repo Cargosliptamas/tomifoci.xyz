@@ -144,6 +144,13 @@ export type PollSummary = {
   fixturesSeen: number
   oddsMapped: number
   resultsWritten: number
+  writtenResults?: Array<{
+    matchId: number
+    h: number
+    a: number
+    penH?: number | null
+    penA?: number | null
+  }>
   unmatched: number
   ts: number
   error?: string
@@ -443,6 +450,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       ON CONFLICT (table_name, convex_id) DO UPDATE SET payload = EXCLUDED.payload
     `
     let resultsWritten = 0
+    const writtenResults: NonNullable<PollSummary['writtenResults']> = []
     const now = Date.now()
     for (const [mid, r] of Object.entries(results)) {
       const matchId = Number(mid)
@@ -451,6 +459,13 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       if (!isKickedOff(matchId, now)) continue
       const penH = r.penH ?? null
       const penA = r.penA ?? null
+      const beforeRows = (await sql`
+        SELECT h, a, pen_h AS "penH", pen_a AS "penA"
+        FROM results
+        WHERE match_id = ${matchId}
+        LIMIT 1
+      `) as Array<{ h: number; a: number; penH?: number | null; penA?: number | null }>
+      const before = beforeRows[0]
       await sql`
         INSERT INTO results (match_id, h, a, pen_h, pen_a)
         VALUES (${matchId}, ${r.h}, ${r.a}, ${penH}, ${penA})
@@ -460,6 +475,15 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
           pen_a = COALESCE(EXCLUDED.pen_a, results.pen_a)
       `
       resultsWritten++
+      if (
+        !before ||
+        before.h !== r.h ||
+        before.a !== r.a ||
+        (before.penH ?? null) !== penH ||
+        (before.penA ?? null) !== penA
+      ) {
+        writtenResults.push({ matchId, h: r.h, a: r.a, penH, penA })
+      }
     }
 
     // Auto-advance bracket: propagate confirmed winners into next-round koTeams slots.
@@ -555,6 +579,7 @@ export async function runLiveScorePoll(): Promise<PollSummary> {
       fixturesSeen,
       oddsMapped: Object.keys(oddsMap).length,
       resultsWritten,
+      writtenResults,
       unmatched,
       ts: Date.now()
     }

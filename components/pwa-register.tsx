@@ -4,7 +4,8 @@ import { useEffect } from 'react'
 
 // Public VAPID key. Must match the server's VAPID_PUBLIC env var. This is the
 // same key the classic game used; it is harmless to ship (it is public).
-const VAPID_PUBLIC = 'BNKDsAWDclmPJS9ckfkyVu68Hew-l9YYyIF2iE3jGzkDo7OooVWNO4FzKlCgzSngTmQPzakrC-fKUsbKew7msOk'
+const FALLBACK_VAPID_PUBLIC =
+  'BNKDsAWDclmPJS9ckfkyVu68Hew-l9YYyIF2iE3jGzkDo7OooVWNO4FzKlCgzSngTmQPzakrC-fKUsbKew7msOk'
 
 const SESSION_KEY = 'tomifoci_session'
 
@@ -35,21 +36,33 @@ async function maybeSubscribe(reg: ServiceWorkerRegistration): Promise<void> {
   if (!hasSession()) return
 
   try {
+    const publicKey = await fetchVapidPublicKey()
+    if (!publicKey) return
     const existing = await reg.pushManager.getSubscription()
     const sub =
       existing ||
       (await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC) as unknown as BufferSource,
+        applicationServerKey: urlB64ToUint8Array(publicKey) as unknown as BufferSource
       }))
 
     await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
+      body: JSON.stringify({ subscription: sub.toJSON() })
     })
   } catch {
     // ignore — push stays dormant
+  }
+}
+
+async function fetchVapidPublicKey(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/push/public-key', { cache: 'no-store' })
+    const json = (await res.json()) as { ok?: boolean; publicKey?: string }
+    return json.ok && json.publicKey ? json.publicKey : FALLBACK_VAPID_PUBLIC
+  } catch {
+    return FALLBACK_VAPID_PUBLIC
   }
 }
 

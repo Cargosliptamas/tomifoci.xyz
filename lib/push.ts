@@ -1,19 +1,9 @@
-// Web push helper — DORMANT by default.
-//
-// The 'web-push' npm package is intentionally NOT a dependency, and no VAPID
-// keys are required to build or run. This module loads 'web-push' lazily via a
-// dynamic import that swallows a missing-module error, and no-ops when either
-// the package or the VAPID_PUBLIC / VAPID_PRIVATE env vars are absent. Push
-// therefore stays completely dormant — and the build never breaks — until
-// someone installs 'web-push' and sets the VAPID env vars.
-//
-// To activate later:
-//   1. pnpm add web-push @types/web-push
-//   2. Set VAPID_PUBLIC, VAPID_PRIVATE (and optionally VAPID_SUBJECT).
-//   3. Stored subscriptions in imported_rows 'pushSubscriptions' will receive
-//      notifications via sendPush().
+// Web push helper. Delivery is active when VAPID_PUBLIC and VAPID_PRIVATE are
+// configured; otherwise sendPush() returns push-not-configured without failing
+// the calling result/poll route.
 
-import { getImportedRows } from './db'
+import webpush, { type WebPushError } from 'web-push'
+import { getSql } from './db'
 
 export type PushSubscriptionJSON = {
   endpoint: string
@@ -29,41 +19,19 @@ export type PushPayload = {
   actions?: Array<{ action: string; title: string }>
 }
 
-export type SendPushResult =
-  | { ok: true; sent: number; failed: number }
-  | { ok: false; error: string }
+export type SendPushResult = { ok: true; sent: number; failed: number } | { ok: false; error: string }
 
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC ?? ''
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE ?? ''
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:admin@tomifoci.xyz'
-
-// Lazily import 'web-push' if it happens to be installed; otherwise return null.
-// The ignore comment keeps bundlers/type-checkers from hard-failing on the
-// (intentionally) absent module.
-async function loadWebPush(): Promise<any | null> {
-  try {
-    // @ts-ignore - 'web-push' is an optional, not-installed dependency
-    const mod: any = await import('web-push').catch(() => null)
-    return mod?.default ?? mod ?? null
-  } catch {
-    return null
-  }
-}
+type StoredSubscription = { id: number; subscription: PushSubscriptionJSON }
 
 export function isPushConfigured(): boolean {
-  return Boolean(VAPID_PUBLIC && VAPID_PRIVATE)
+  return Boolean(vapidPublic() && vapidPrivate())
 }
 
 // Send a push payload to a single subscription. Returns false on any failure.
-export async function sendPushTo(
-  subscription: PushSubscriptionJSON,
-  payload: PushPayload
-): Promise<boolean> {
+export async function sendPushTo(subscription: PushSubscriptionJSON, payload: PushPayload): Promise<boolean> {
   if (!isPushConfigured()) return false
-  const webpush = await loadWebPush()
-  if (!webpush) return false
   try {
-    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
+    webpush.setVapidDetails(vapidSubject(), vapidPublic(), vapidPrivate())
     await webpush.sendNotification(subscription as any, JSON.stringify(payload))
     return true
   } catch {
@@ -72,30 +40,71 @@ export async function sendPushTo(
 }
 
 // Broadcast a payload to every stored subscription. No-ops (ok:false) when push
-// is not configured or 'web-push' is not installed.
+// is not configured. Expired browser subscriptions are removed on 404/410.
 export async function sendPush(payload: PushPayload): Promise<SendPushResult> {
   if (!isPushConfigured()) return { ok: false, error: 'push-not-configured' }
-  const webpush = await loadWebPush()
-  if (!webpush) return { ok: false, error: 'push-not-configured' }
 
-  let rows: Array<Record<string, any>> = []
+  let rows: StoredSubscription[] = []
   try {
-    rows = await getImportedRows('pushSubscriptions')
+    rows = await loadSubscriptions()
   } catch {
     return { ok: false, error: 'subscriptions-unavailable' }
   }
 
+  webpush.setVapidDetails(vapidSubject(), vapidPublic(), vapidPrivate())
   let sent = 0
   let failed = 0
   for (const row of rows) {
-    const sub = (row?.subscription ?? row) as PushSubscriptionJSON
+    const sub = row.subscription
     if (!sub?.endpoint) {
       failed++
       continue
     }
-    const ok = await sendPushTo(sub, payload)
-    if (ok) sent++
-    else failed++
+    try {
+      await webpush.sendNotification(sub as any, JSON.stringify(payload))
+      sent++
+    } catch (error) {
+      failed++
+      if (isExpiredPushError(error)) await deleteSubscription(row.id)
+    }
   }
   return { ok: true, sent, failed }
+}
+
+function vapidPublic(): string {
+  return process.env.VAPID_PUBLIC ?? ''
+}
+
+function vapidPrivate(): string {
+  return process.env.VAPID_PRIVATE ?? ''
+}
+
+function vapidSubject(): string {
+  return process.env.VAPID_SUBJECT ?? 'mailto:admin@tomifoci.xyz'
+}
+
+async function loadSubscriptions(): Promise<StoredSubscription[]> {
+  const sql = getSql()
+  const rows = (await sql`
+    SELECT id, payload
+    FROM imported_rows
+    WHERE table_name = 'pushSubscriptions'
+    ORDER BY id ASC
+  `) as Array<{ id: number; payload: Record<string, any> }>
+  return rows
+    .map((row) => ({
+      id: row.id,
+      subscription: (row.payload?.subscription ?? row.payload) as PushSubscriptionJSON
+    }))
+    .filter((row) => Boolean(row.subscription?.endpoint))
+}
+
+async function deleteSubscription(id: number): Promise<void> {
+  const sql = getSql()
+  await sql`DELETE FROM imported_rows WHERE id = ${id}`
+}
+
+function isExpiredPushError(error: unknown): boolean {
+  const statusCode = (error as WebPushError | undefined)?.statusCode
+  return statusCode === 404 || statusCode === 410
 }
