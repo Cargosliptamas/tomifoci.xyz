@@ -20,15 +20,19 @@ export default function LoginPage() {
   const [claimCode, setClaimCode] = useState('')
   const [claimError, setClaimError] = useState<string | null>(null)
 
-  useEffect(() => {
+  function loadPlayers() {
+    setLoadError(null)
     fetch('/api/state?community=hu', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json: { ok: boolean; state?: GameState; error?: string }) => {
-        if (json.ok && json.state) setPlayers((json.state.settings.players ?? []).map((p) => p.name).filter(Boolean))
+        if (json.ok && json.state)
+          setPlayers((json.state.settings.players ?? []).map((p) => p.name).filter(Boolean))
         else setLoadError(json.error ?? 'load-failed')
       })
       .catch(() => setLoadError('offline'))
-  }, [])
+  }
+
+  useEffect(loadPlayers, [])
 
   // Automated-test auto-login: /login?as=<name> logs straight in WITHOUT a PIN. The server
   // only honours this for the single TEST_LOGIN_USER (e.g. Firecrawl); for anyone else the
@@ -151,8 +155,14 @@ export default function LoginPage() {
             className="mb-[14px] w-full rounded-[14px] border border-[#DCEFEE] bg-white px-4 py-[13px] text-[15px] shadow-[0_2px_8px_rgba(13,51,49,0.04)] outline-none"
           />
           {loadError && (
-            <div className="mb-3 rounded-[12px] bg-[#fff4e6] px-4 py-3 text-[13px] font-semibold text-[#9a6b00]">
-              Nem sikerült betölteni a játékosokat ({loadError}). Ellenőrizd a DATABASE_URL beállítást.
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-[12px] bg-[#fff4e6] px-4 py-3 text-[13px] font-semibold text-[#9a6b00]">
+              <span>Nem sikerült kapcsolódni. Ellenőrizd az internetkapcsolatot, és próbáld újra.</span>
+              <button
+                onClick={loadPlayers}
+                className="tap flex-none rounded-full bg-white/60 px-3 py-1 text-[12px] font-black"
+              >
+                ⟳ újra
+              </button>
             </div>
           )}
           <div className="grid grid-cols-2 gap-[10px]">
@@ -188,7 +198,9 @@ export default function LoginPage() {
             {selected[0]}
           </span>
           <span className="mt-[14px] text-[19px] font-black">{selected}</span>
-          <span className="mt-[2px] text-[13px] text-[#0D3331]/[0.62]">Add meg a meghívó kódot a belépéshez</span>
+          <span className="mt-[2px] text-[13px] text-[#0D3331]/[0.62]">
+            Add meg a meghívó kódot a belépéshez
+          </span>
           <input
             type="text"
             value={claimCode}
@@ -253,7 +265,9 @@ export default function LoginPage() {
               )
             )}
           </div>
-          <span className="mt-[18px] text-xs text-[#0D3331]/50">🔒 Biometrikus belépés ezen az eszközön elérhető</span>
+          <span className="mt-[18px] text-xs text-[#0D3331]/50">
+            🔒 Biometrikus belépés ezen az eszközön elérhető
+          </span>
         </div>
       )}
     </div>

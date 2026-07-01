@@ -24,16 +24,31 @@ export default function MeccsekPage() {
         <div className="mb-3 flex items-center justify-between rounded-[12px] border border-[#DCEFEE] bg-white px-[13px] py-2">
           <span className="flex items-center gap-2 text-xs font-bold text-[#15803d]">
             <span className="size-2 rounded-full bg-[#34C759]" />
-            {status === 'ready' ? `Élő adatok · frissítve ${freshness(lastUpdated)}` : status === 'loading' ? 'Betöltés…' : 'Offline — utolsó állás'}
+            {status === 'ready'
+              ? `Élő adatok · frissítve ${freshness(lastUpdated)}`
+              : status === 'loading'
+                ? 'Betöltés…'
+                : 'Offline — utolsó állás'}
           </span>
-          <button onClick={() => void refresh()} className="tap text-[11px] font-semibold text-[#0D3331]/50 hover:text-[#007E73]">
+          <button
+            onClick={() => void refresh()}
+            className="tap text-[11px] font-semibold text-[#0D3331]/50 hover:text-[#007E73]"
+          >
             ⟳ frissítés
           </button>
         </div>
 
         {status === 'error' && (
-          <div className="mb-4 rounded-[14px] bg-[#fff4e6] px-4 py-3 text-[13px] font-semibold text-[#9a6b00]">
-            Nem érhető el az adatbázis. Állítsd be a <span className="mono">DATABASE_URL</span> változót a Vercelben.
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-[14px] bg-[#fff4e6] px-4 py-3 text-[13px] font-semibold text-[#9a6b00]">
+            <span>
+              Nem sikerült frissíteni az adatokat. Ellenőrizd az internetkapcsolatot, és próbáld újra.
+            </span>
+            <button
+              onClick={() => void refresh()}
+              className="tap flex-none rounded-full bg-white/60 px-3 py-1 text-[12px] font-black"
+            >
+              ⟳ újra
+            </button>
           </div>
         )}
 
@@ -68,7 +83,9 @@ export default function MeccsekPage() {
         {/* LEZÁRVA — kicked off, result pending (read-only) */}
         {lockedRecent.length > 0 && (
           <section className="mt-2">
-            <div className="mb-[10px] mt-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">🔒 LEZÁRVA</div>
+            <div className="mb-[10px] mt-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">
+              🔒 LEZÁRVA
+            </div>
             {lockedRecent.map((f) => (
               <MatchCard key={f.id} fixture={f} />
             ))}
@@ -78,7 +95,9 @@ export default function MeccsekPage() {
         {/* BEFEJEZETT */}
         {finishedRecent.length > 0 && (
           <section className="mt-2">
-            <div className="mb-[10px] mt-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">BEFEJEZETT</div>
+            <div className="mb-[10px] mt-[18px] text-xs font-black tracking-[0.06em] text-[#0D3331]/50">
+              BEFEJEZETT
+            </div>
             {finishedRecent.map((f) => (
               <FinishedCard key={f.id} fixture={f} />
             ))}
@@ -86,7 +105,9 @@ export default function MeccsekPage() {
         )}
 
         {status === 'ready' && !buckets.live.length && !openSoon.length && !finishedRecent.length && (
-          <div className="py-12 text-center text-[14px] text-[#0D3331]/50">Nincs megjeleníthető mérkőzés.</div>
+          <div className="py-12 text-center text-[14px] text-[#0D3331]/50">
+            Nincs megjeleníthető mérkőzés.
+          </div>
         )}
       </div>
     </>
